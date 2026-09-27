@@ -1,0 +1,6 @@
+{
+  "name": "Styx Bet",
+  "description": "Mobile-first social betting with friends on anything. Real-time stakes, escrow, automated odds, proof verification, and AI adjudication.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
