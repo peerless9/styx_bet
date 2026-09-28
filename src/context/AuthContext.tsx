@@ -1,7 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { UserProfile } from '../types';
 import { auth, googleProvider, db } from '../lib/firebase';
+import { isNativeApp, isStandalonePWA } from '../lib/platform';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import {
+  GoogleAuthProvider,
+  getRedirectResult,
+  signInWithCredential,
+  signInWithRedirect,
   signInWithPopup,
   signOut as firebaseSignOut,
   onAuthStateChanged,
@@ -187,9 +193,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
+  // Finish a redirect-based sign-in (used by the home-screen web app on iOS)
+  useEffect(() => {
+    if (isNativeApp) return;
+    getRedirectResult(auth).catch((err) => console.warn('Redirect sign-in error:', err));
+  }, []);
+
   const signInWithGoogle = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      if (isNativeApp) {
+        // Native Google sign-in sheet, then hand the credential to the JS SDK
+        const result = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
+        const idToken = result.credential?.idToken;
+        if (!idToken) throw new Error('Google sign-in returned no ID token');
+        await signInWithCredential(
+          auth,
+          GoogleAuthProvider.credential(idToken, result.credential?.accessToken)
+        );
+        return;
+      }
+      if (isStandalonePWA) {
+        // Popups open in a separate Safari context from a home-screen app
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (err: any) {
+        if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/operation-not-supported-in-this-environment') {
+          await signInWithRedirect(auth, googleProvider);
+        } else {
+          throw err;
+        }
+      }
     } catch (err) {
       console.error('Google sign-in error:', err);
     }
@@ -197,6 +233,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     try {
+      if (isNativeApp) {
+        await FirebaseAuthentication.signOut().catch(() => {});
+      }
       await firebaseSignOut(auth);
       setFirebaseUser(null);
       setIsDemoUser(true);

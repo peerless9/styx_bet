@@ -3,6 +3,7 @@ import type { Bet } from '../types';
 import { toPng, toBlob } from 'html-to-image';
 import { X, Download, Copy, Check } from 'lucide-react';
 import { format } from 'date-fns';
+import { shareImage } from '../lib/share';
 
 interface ShareCardModalProps {
   bet: Bet;
@@ -25,10 +26,9 @@ export const ShareCardModal: React.FC<ShareCardModalProps> = ({ bet, onClose }) 
     try {
       setDownloading(true);
       const dataUrl = await toPng(cardRef.current, { cacheBust: true, pixelRatio: 2 });
-      const link = document.createElement('a');
-      link.download = `styx-contract-${bet.id.slice(0, 6)}.png`;
-      link.href = dataUrl;
-      link.click();
+      await shareImage(dataUrl, `styx-contract-${bet.id.slice(0, 6)}.png`);
+    } catch (err) {
+      console.error('Share card export failed:', err);
     } finally {
       setDownloading(false);
     }
@@ -56,7 +56,7 @@ export const ShareCardModal: React.FC<ShareCardModalProps> = ({ bet, onClose }) 
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-60 flex items-start justify-center p-modal-safe bg-black/60 backdrop-blur-sm overflow-y-auto overscroll-contain">
       <div className="relative w-full max-w-sm bg-white rounded-2xl border border-neutral-200 shadow-2xl p-5 space-y-4 my-auto text-left text-neutral-900">
         <div className="flex justify-between items-center border-b border-neutral-100 pb-2">
           <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">

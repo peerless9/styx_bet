@@ -63,8 +63,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({ onClose, onOpenRegistr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-white rounded-2xl border border-neutral-200 shadow-2xl flex flex-col max-h-[90vh] text-left text-neutral-900 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-modal-safe bg-black/60 backdrop-blur-sm overflow-y-auto overscroll-contain">
+      <div className="my-auto w-full max-w-md bg-white rounded-2xl border border-neutral-200 shadow-2xl flex flex-col max-h-[90dvh] text-left text-neutral-900 overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
           <div>

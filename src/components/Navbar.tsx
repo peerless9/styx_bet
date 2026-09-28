@@ -22,7 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200 shadow-xs">
+    <header className="sticky top-0 z-40 pt-safe bg-white/95 backdrop-blur-md border-b border-neutral-200 shadow-xs">
       <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
         {/* Left: Brand */}
         <div className="flex items-center space-x-3">

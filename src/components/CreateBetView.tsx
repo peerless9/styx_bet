@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { publicOrigin } from '../lib/platform';
 import {
   createBet,
   calculateOdds,
@@ -206,7 +207,7 @@ export const CreateBetView: React.FC<CreateBetViewProps> = ({
   };
 
   const handleCopyInviteLink = () => {
-    const inviteUrl = `${window.location.origin}#invite=${currentUser?.username || currentUser?.id}`;
+    const inviteUrl = `${publicOrigin}/#invite=${currentUser?.username || currentUser?.id}`;
     navigator.clipboard?.writeText(inviteUrl);
     setCopiedInvite(true);
     setTimeout(() => setCopiedInvite(false), 2500);
@@ -335,7 +336,7 @@ export const CreateBetView: React.FC<CreateBetViewProps> = ({
   };
 
   return (
-    <div className="max-w-2xl mx-auto pb-28 text-left space-y-6">
+    <div className="max-w-2xl mx-auto pb-nav-safe text-left space-y-6">
       {/* Top Header */}
       <div className="flex items-center justify-between pb-4 border-b border-neutral-200">
         <div className="flex items-center gap-3">

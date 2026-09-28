@@ -1,6 +1,13 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import {
+  getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  GoogleAuthProvider,
+  type Auth,
+} from 'firebase/auth';
+import { isNativeApp } from './platform';
 
 const env = (import.meta as any).env || {};
 
@@ -15,5 +22,21 @@ const firebaseConfig = {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-export const auth = getAuth(app);
+
+// Inside the iOS app's WKWebView, the default getAuth() hangs because it tries
+// to load the popup/redirect resolver iframe. initializeAuth with IndexedDB
+// persistence (and no resolver) is the documented fix; sign-in itself is done
+// natively via @capacitor-firebase/authentication.
+function createAuth(): Auth {
+  if (isNativeApp) {
+    try {
+      return initializeAuth(app, { persistence: indexedDBLocalPersistence });
+    } catch {
+      return getAuth(app); // already initialized (e.g. HMR)
+    }
+  }
+  return getAuth(app);
+}
+
+export const auth = createAuth();
 export const googleProvider = new GoogleAuthProvider();

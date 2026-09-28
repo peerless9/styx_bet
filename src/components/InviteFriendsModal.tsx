@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Bet } from '../types';
 import { X, Copy, Check } from 'lucide-react';
+import { publicOrigin } from '../lib/platform';
 
 interface InviteFriendsModalProps {
   isOpen: boolean;
@@ -16,7 +17,7 @@ export const InviteFriendsModal: React.FC<InviteFriendsModalProps> = ({
   const [copied, setCopied] = useState(false);
   if (!isOpen) return null;
 
-  const inviteUrl = `${window.location.origin}/#bet-${bet.id}`;
+  const inviteUrl = `${publicOrigin}/#bet-${bet.id}`;
 
   const handleCopy = () => {
     navigator.clipboard?.writeText(inviteUrl);
@@ -25,8 +26,8 @@ export const InviteFriendsModal: React.FC<InviteFriendsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs font-mono">
-      <div className="bg-white border-2 border-black shadow-[8px_8px_0px_#000] p-5 w-full max-w-sm text-left space-y-4 text-black">
+    <div className="fixed inset-0 z-60 flex items-start justify-center p-modal-safe bg-black/70 backdrop-blur-xs font-mono overflow-y-auto overscroll-contain">
+      <div className="my-auto bg-white border-2 border-black shadow-[8px_8px_0px_#000] p-5 w-full max-w-sm text-left space-y-4 text-black">
         <div className="flex items-center justify-between border-b border-black pb-2">
           <h3 className="text-xs uppercase font-black">[INVITE PEERS TO BET]</h3>
           <button onClick={onClose} className="p-1 hover:bg-neutral-100">

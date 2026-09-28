@@ -57,7 +57,7 @@ export const LeaderboardView: React.FC = () => {
   const totalSettledVolume = settledBets.reduce((sum, b) => sum + (b.totalPot || 0), 0);
 
   return (
-    <div className="max-w-2xl mx-auto pb-28 pt-2 space-y-6 text-left">
+    <div className="max-w-2xl mx-auto pb-nav-safe pt-2 space-y-6 text-left">
       {/* Header */}
       <div className="border-b border-neutral-200 pb-4">
         <h2 className="text-2xl font-bold tracking-tight text-neutral-900 leading-tight">

@@ -131,7 +131,7 @@ export const BetInboxView: React.FC<BetInboxViewProps> = ({
   };
 
   return (
-    <div className="max-w-2xl mx-auto pb-28 text-left space-y-6">
+    <div className="max-w-2xl mx-auto pb-nav-safe text-left space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-neutral-200">
         <div>

@@ -2,7 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the app draw under the notch / home bar (we pad with safe-area insets).
+         maximum-scale=1 stops iOS Safari auto-zooming when a small-text input is focused; pinch-zoom still works. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <!-- iOS home-screen app -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Styx" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>Styx Bet</title>
     <meta name="description" content="Mobile-first social betting with friends on anything. Real-time stakes, escrow, automated odds, proof verification, and AI adjudication." />
     <meta property="og:title" content="Styx Bet" />

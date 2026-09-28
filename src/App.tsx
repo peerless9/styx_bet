@@ -253,7 +253,7 @@ function MainApp() {
     <div className="min-h-screen bg-[#F8FAFC] text-neutral-900 flex flex-col font-sans">
       {/* In-app Notification Banner for incoming bets */}
       {newBetToast && (
-        <div className="fixed top-18 left-4 right-4 max-w-md mx-auto z-50 animate-in fade-in slide-in-from-top-3">
+        <div className="fixed top-toast-safe left-4 right-4 max-w-md mx-auto z-50 animate-in fade-in slide-in-from-top-3">
           <div className="p-3 bg-white rounded-2xl border border-neutral-200 shadow-xl flex items-center justify-between gap-3 text-neutral-900">
             <div className="flex items-center gap-2.5 overflow-hidden">
               <div className="w-8 h-8 rounded-full bg-neutral-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
@@ -328,7 +328,7 @@ function MainApp() {
 
         {/* TAB 1: BETS FEED */}
         {currentTab === 'bets' && (
-          <div className="space-y-6 pb-28 text-left">
+          <div className="space-y-6 pb-nav-safe text-left">
             {/* HERO SECTION */}
             <div className="pt-2 pb-4 text-center sm:text-left flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-200/80">
               <div className="space-y-1">
@@ -506,7 +506,7 @@ function MainApp() {
 
         {/* TAB 4: PUBLIC ESCROW & LEDGER */}
         {currentTab === 'ledger' && (
-          <div className="max-w-2xl mx-auto pb-28 space-y-6 text-left">
+          <div className="max-w-2xl mx-auto pb-nav-safe space-y-6 text-left">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-neutral-200">
               <div>
                 <h2 className="text-2xl font-bold tracking-tight text-neutral-900 leading-tight">

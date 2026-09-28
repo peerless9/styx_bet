@@ -176,8 +176,8 @@ export const BetDetailModal: React.FC<BetDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-lg bg-white rounded-2xl border border-neutral-200 shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col text-left text-neutral-900">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-modal-safe bg-black/60 backdrop-blur-sm overflow-y-auto overscroll-contain">
+      <div className="relative w-full max-w-lg bg-white rounded-2xl border border-neutral-200 shadow-2xl overflow-hidden my-auto max-h-[92dvh] flex flex-col text-left text-neutral-900">
         {/* Header */}
         <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
           <div className="flex items-center space-x-2">
