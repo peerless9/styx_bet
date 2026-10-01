@@ -1,6 +1,9 @@
 # styx_bet
 
-Mobile-first social betting with friends on anything. React + Vite + Firebase.
+Mobile-first social betting with friends on anything.
+
+- **`mobile/`** — the iPhone app (Expo / React Native). Start here: see [mobile/README.md](mobile/README.md).
+- **repo root** — the original web app (React + Vite + Firebase).
 
 ## Web
 
