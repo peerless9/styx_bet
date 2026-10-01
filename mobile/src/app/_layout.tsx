@@ -44,6 +44,7 @@ function RootStack() {
         <Stack.Screen name="audit" options={sheet} />
         <Stack.Screen name="account" options={sheet} />
         <Stack.Screen name="username" options={sheet} />
+        <Stack.Screen name="review" options={sheet} />
       </Stack.Protected>
     </Stack>
   );

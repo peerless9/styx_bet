@@ -27,6 +27,10 @@ export function BetCard({ bet, currentUserId, onPress }: { bet: Bet; currentUser
           <Pill label="Settled" tone="green" icon="shield-checkmark" />
         ) : isLocked ? (
           <Pill label="In Escrow" icon="time-outline" />
+        ) : bet.status === 'in_review' ? (
+          <Pill label="In review" icon="eye-outline" tone="amber" />
+        ) : bet.status === 'disputed' ? (
+          <Pill label="Disputed" tone="red" />
         ) : bet.status === 'pending' ? (
           <Pill label="Pending" />
         ) : (

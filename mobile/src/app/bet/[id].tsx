@@ -3,8 +3,9 @@ import { format, isPast, parseISO } from 'date-fns';
 import { router, useLocalSearchParams } from 'expo-router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
+import { EvidenceComposer, EvidenceList, useEvidence } from '@/components/Evidence';
 import { SignaturePad } from '@/components/SignaturePad';
 import {
   Avatar,
@@ -32,7 +33,9 @@ import {
   cancelBet,
   confirmParticipantBet,
   joinOpenBet,
-  requestArbitration,
+  canDecide,
+  requestStaffReview,
+  staffDecide,
   voteOutcome,
 } from '@/services/betService';
 
@@ -73,12 +76,25 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
   const me = bet.participants.find((p) => p.userId === currentUser?.id);
   const isCreator = currentUser?.id === bet.creatorId;
   const isOpen = bet.betType === 'open';
-  const deadline = parseISO(bet.deadline);
+  const deadline = bet.deadline ? parseISO(bet.deadline) : null;
+  const method = bet.resolution || 'players';
+  const evidence = useEvidence(bet.id);
+  const isStaff = !!currentUser?.isStaff;
+  // re-check the deadline every 30s so the "who won" step appears on time
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+  const decidable = canDecide(bet, now);
+  const active = bet.status === 'locked' || bet.status === 'settling';
+  const [staffSide, setStaffSide] = useState<string | null>(null);
+  const [staffNote, setStaffNote] = useState('');
   const needsSignature = !me || (bet.status === 'pending' && !me.confirmed);
   const canJoin = needsSignature && (me || (isOpen && bet.status !== 'settled' && bet.status !== 'cancelled'));
 
   const [side, setSide] = useState(me?.side || bet.sides[0]);
-  const [stake, setStake] = useState(me?.stake || 25);
+  const [stake, setStake] = useState(me?.stake || bet.participants[0]?.stake || 10);
   const [signature, setSignature] = useState(currentUser?.signature || '');
   const [agreed, setAgreed] = useState(false);
   const [drawing, setDrawing] = useState(false);
@@ -143,9 +159,13 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
             Pot <T v="bodyBold">{money(bet.totalPot)}</T>
           </T>
           <Row gap={4}>
-            <Ionicons name="time-outline" size={14} color={isPast(deadline) ? C.red : C.muted} />
-            <T v="tiny">{format(deadline, 'MMM d · h:mm a')}</T>
+            <Ionicons name="time-outline" size={14} color={deadline && isPast(deadline) ? C.red : C.muted} />
+            <T v="tiny">{deadline ? format(deadline, 'MMM d · h:mm a') : 'No deadline'}</T>
           </Row>
+        </Row>
+        <Row gap={6}>
+          <Ionicons name={method === 'review' ? 'document-text-outline' : 'people-outline'} size={14} color={C.muted} />
+          <T v="tiny">{method === 'review' ? 'Winner decided by Styx review of evidence' : 'Winner decided by the players'}</T>
         </Row>
         <Row style={{ flexWrap: 'wrap' }}>
           {bet.sides.map((sd) => (
@@ -190,7 +210,7 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
                 </T>
                 <T v="tiny">
                   {p.side} · {money(p.stake)}
-                  {p.outcomeVote ? ` · voted “${p.outcomeVote}”` : ''}
+                  {p.outcomeVote ? ' · picked a winner' : ''}
                 </T>
               </View>
               <Pill label={p.status === 'accepted' || p.confirmed ? 'Signed' : p.status === 'declined' ? 'Declined' : 'Waiting'} tone={p.status === 'accepted' || p.confirmed ? 'green' : p.status === 'declined' ? 'red' : 'neutral'} />
@@ -199,11 +219,26 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
         ))}
       </Card>
 
-      {/* Vote */}
-      {(bet.status === 'locked' || bet.status === 'settling') && me ? (
+      {/* Waiting for the deadline */}
+      {active && !decidable && me ? (
+        <Card>
+          <Row gap={8}>
+            <Ionicons name="hourglass-outline" size={18} color={C.ink} />
+            <T v="bodyBold">Bet is live</T>
+          </Row>
+          <T v="small">
+            {method === 'review'
+              ? `After ${deadline ? format(deadline, 'EEE, MMM d · h:mm a') : 'the deadline'}, upload your proof and the Styx team will pick the winner.`
+              : `After ${deadline ? format(deadline, 'EEE, MMM d · h:mm a') : 'the deadline'}, everyone picks who won.`}
+          </T>
+        </Card>
+      ) : null}
+
+      {/* Players decide */}
+      {active && decidable && method === 'players' && me ? (
         <Card>
           <T v="bodyBold">Who won?</T>
-          <T v="small">If everyone agrees, the pot pays out instantly. If not, it goes to arbitration.</T>
+          <T v="small">Everyone picks. If all picks match, the pot pays out right away. If not, the Styx team reviews it.</T>
           <View style={{ gap: 8 }}>
             {bet.sides.map((sd) => {
               const voted = me.outcomeVote === sd;
@@ -213,7 +248,7 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
                   disabled={busy === 'vote'}
                   onPress={() => {
                     tap();
-                    currentUser && act('vote', () => voteOutcome(bet, currentUser, sd));
+                    if (currentUser) act('vote', () => voteOutcome(bet, currentUser, sd));
                   }}
                   style={[s.vote, voted && { backgroundColor: C.ink, borderColor: C.ink }]}>
                   <T v="bodyBold" style={{ color: voted ? '#fff' : C.ink }}>
@@ -224,15 +259,79 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
               );
             })}
           </View>
+          <T v="tiny">
+            {bet.participants.filter((p) => p.outcomeVote).length} of {bet.participants.filter((p) => p.confirmed || p.status === 'accepted').length} picked
+          </T>
         </Card>
       ) : null}
 
-      {/* Dispute */}
+      {/* Evidence review: submit proof */}
+      {active && decidable && method === 'review' && me && currentUser ? (
+        <Card>
+          <T v="bodyBold">Send your proof</T>
+          <T v="small">Add a photo, screenshot or note showing what happened. A Styx team member reviews it and picks the winner.</T>
+          <EvidenceComposer bet={bet} user={currentUser} />
+        </Card>
+      ) : null}
+
+      {/* Players disagreed */}
       {bet.status === 'disputed' ? (
         <Card style={{ borderColor: C.redLine }}>
-          <Pill label="Disputed · arbitration required" tone="red" />
-          <T v="small">Votes didn’t match. Request a ruling to release the escrow.</T>
-          <Button kind="danger" title="Request arbitration ruling" loading={busy === 'arb'} onPress={() => act('arb', () => requestArbitration(bet))} />
+          <Pill label="Picks didn’t match" tone="red" />
+          <T v="small">Send it to the Styx team. Add any proof you have so they can decide fairly.</T>
+          {me && currentUser ? <EvidenceComposer bet={bet} user={currentUser} cta="Send to Styx review" /> : null}
+          <Button kind="secondary" small title="Send without proof" loading={busy === 'review'} onPress={() => act('review', () => requestStaffReview(bet))} />
+        </Card>
+      ) : null}
+
+      {/* Under review */}
+      {bet.status === 'in_review' ? (
+        <Card style={{ borderColor: C.amberLine, backgroundColor: C.amberBg }}>
+          <Row gap={8}>
+            <Ionicons name="eye-outline" size={18} color={C.amber} />
+            <T v="bodyBold" style={{ color: C.amber }}>
+              Under review by the Styx team
+            </T>
+          </Row>
+          <T v="small">You’ll see the result here. You can still add more proof below.</T>
+          {me && currentUser ? <EvidenceComposer bet={bet} user={currentUser} cta="Add proof" /> : null}
+        </Card>
+      ) : null}
+
+      <EvidenceList items={evidence} />
+
+      {/* Staff decision */}
+      {isStaff && currentUser && (bet.status === 'in_review' || bet.status === 'disputed') ? (
+        <Card style={{ borderColor: C.ink, borderWidth: 2 }}>
+          <Row gap={8}>
+            <Ionicons name="shield-checkmark" size={18} color={C.ink} />
+            <T v="bodyBold">Staff decision</T>
+          </Row>
+          <T v="small">Pick the winning side. Winners are paid out immediately.</T>
+          <View style={{ gap: 8 }}>
+            {bet.sides.map((sd) => (
+              <Pressable key={sd} onPress={() => setStaffSide(sd)} style={[s.vote, staffSide === sd && { backgroundColor: C.ink, borderColor: C.ink }]}>
+                <T v="bodyBold" style={{ color: staffSide === sd ? '#fff' : C.ink }}>
+                  {sd}
+                </T>
+                <T v="tiny" style={{ color: staffSide === sd ? '#D4D4D4' : C.muted }}>
+                  {bet.participants.filter((p) => p.side === sd).map((p) => p.name.split(' ')[0]).join(', ') || 'no one'}
+                </T>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput value={staffNote} onChangeText={setStaffNote} placeholder="Reason (shown to players)" placeholderTextColor={C.faint} multiline style={s.note} />
+          <Button
+            title={staffSide ? `Declare “${staffSide}” the winner` : 'Pick a side'}
+            disabled={!staffSide}
+            loading={busy === 'staff'}
+            onPress={() =>
+              Alert.alert('Confirm decision', `“${staffSide}” wins and the pot is paid out. This can’t be undone.`, [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Confirm', onPress: () => staffSide && act('staff', () => staffDecide(bet, currentUser, staffSide, staffNote)) },
+              ])
+            }
+          />
         </Card>
       ) : null}
 
@@ -243,7 +342,7 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
             <T v="label" style={{ color: C.greenDark }}>
               Official verdict
             </T>
-            <Pill label={bet.ruling.judgedBy} tone="green" />
+            <Pill label={bet.ruling.judgedBy === 'staff' ? 'Styx review' : bet.ruling.judgedBy === 'consensus' ? 'Players agreed' : bet.ruling.judgedBy} tone="green" />
           </Row>
           <T v="h3">Winner: {bet.ruling.winningSide}</T>
           <T v="small">{bet.ruling.reasoning}</T>
@@ -261,5 +360,6 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
 
 const s = StyleSheet.create({
   quote: { backgroundColor: C.bg, borderRadius: 12, padding: 12 },
+  note: { backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: 14, padding: 12, minHeight: 60, fontSize: 16, color: C.ink, textAlignVertical: 'top' },
   vote: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.card },
 });

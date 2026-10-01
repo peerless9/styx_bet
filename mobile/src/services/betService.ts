@@ -1,5 +1,6 @@
 import { db } from '@/lib/firebase';
 import {
+  addDoc,
   collection,
   doc,
   setDoc,
@@ -15,6 +16,7 @@ import type {
   BetType,
   PayoutRule,
   Participant,
+  ResolutionMethod,
   StanceCategory,
   UserProfile,
   Transaction,
@@ -199,7 +201,9 @@ export async function createBet(params: {
   odds: Record<string, number>;
   totalPot: number;
   payoutRule: PayoutRule;
-  deadline: string;
+  /** ISO date, or null for no deadline */
+  deadline: string | null;
+  resolution?: ResolutionMethod;
   isOpenToPublic?: boolean;
 }): Promise<string> {
   const {
@@ -217,6 +221,7 @@ export async function createBet(params: {
     totalPot,
     payoutRule,
     deadline,
+    resolution = 'players',
     isOpenToPublic = false,
   } = params;
 
@@ -282,6 +287,7 @@ export async function createBet(params: {
     totalPot,
     payoutRule,
     deadline,
+    resolution,
     status: initialStatus,
     vaultKey: `VAULT-${betId.slice(-6).toUpperCase()}`,
     contractHash,
@@ -527,6 +533,9 @@ export async function submitBetProof(
 }
 
 export async function voteOutcome(bet: Bet, user: UserProfile, side: string): Promise<void> {
+  if (bet.deadline && new Date(bet.deadline).getTime() > Date.now()) {
+    throw new Error('You can pick the winner once the deadline has passed.');
+  }
   const updated = bet.participants.map((p) =>
     p.userId === user.id ? { ...p, outcomeVote: side } : p
   );
@@ -559,7 +568,9 @@ async function settleBetWithWinner(
   bet: Bet,
   participants: Participant[],
   winningSide: string,
-  reasoning: string
+  reasoning: string,
+  judgedBy: 'consensus' | 'staff' = 'consensus',
+  judgedByName?: string
 ): Promise<void> {
   const winners = participants.filter(
     (p) => p.side === winningSide && (p.confirmed || p.status === 'accepted')
@@ -571,7 +582,8 @@ async function settleBetWithWinner(
     reasoning,
     confidence: 100,
     judgedAt: new Date().toISOString(),
-    judgedBy: 'consensus' as const,
+    judgedBy,
+    ...(judgedByName ? { judgedByName } : {}),
   };
 
   await updateDoc(doc(db, 'bets', bet.id), {
@@ -603,7 +615,10 @@ async function settleBetWithWinner(
             betTerms: bet.terms,
             amount: payoutAmount,
             type: 'payout',
-            note: `Disbursed winnings for consensus victory on ${winningSide}`,
+            note:
+              judgedBy === 'staff'
+                ? `Disbursed winnings after Styx review: ${winningSide}`
+                : `Disbursed winnings for consensus victory on ${winningSide}`,
           });
         }
       } catch (err) {
@@ -716,4 +731,54 @@ export async function completeUserRegistration(data: {
   });
 
   return updated;
+}
+
+/* ---------- Deciding the winner ---------- */
+
+/** Bets can be decided once the deadline has passed — or any time if there is no deadline. */
+export function canDecide(bet: Bet, now = Date.now()): boolean {
+  if (bet.status !== 'locked' && bet.status !== 'settling') return false;
+  return !bet.deadline || new Date(bet.deadline).getTime() <= now;
+}
+
+/** Send a bet to Styx staff (evidence review, or players couldn't agree). */
+export async function requestStaffReview(bet: Bet): Promise<void> {
+  await updateDoc(doc(db, 'bets', bet.id), {
+    status: 'in_review',
+    reviewRequestedAt: new Date().toISOString(),
+  });
+}
+
+/** Attach proof (a note and/or a small JPEG) to a bet. Moves the bet into review if needed. */
+export async function submitEvidence(
+  bet: Bet,
+  user: UserProfile,
+  evidence: { text?: string; imageBase64?: string }
+): Promise<void> {
+  const text = evidence.text?.trim();
+  if (!text && !evidence.imageBase64) throw new Error('Add a photo or a note.');
+  await addDoc(collection(db, 'bets', bet.id, 'evidence'), {
+    betId: bet.id,
+    userId: user.id,
+    userName: user.name,
+    ...(text ? { text } : {}),
+    ...(evidence.imageBase64 ? { imageBase64: evidence.imageBase64 } : {}),
+    createdAt: new Date().toISOString(),
+  });
+  if (bet.status === 'locked' || bet.status === 'settling' || bet.status === 'disputed') {
+    await requestStaffReview(bet);
+  }
+}
+
+/** Staff member picks the winner of a bet under review and pays it out. */
+export async function staffDecide(bet: Bet, staff: UserProfile, winningSide: string, note?: string): Promise<void> {
+  if (!staff.isStaff) throw new Error('Only Styx staff can decide reviewed bets.');
+  await settleBetWithWinner(
+    bet,
+    bet.participants,
+    winningSide,
+    note?.trim() || 'Evidence reviewed by the Styx team.',
+    'staff',
+    staff.name
+  );
 }

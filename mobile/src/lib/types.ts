@@ -6,9 +6,13 @@ export type BetStatus =
   | 'settling'
   | 'settled'
   | 'disputed'
+  | 'in_review'
   | 'charity'
   | 'system_forfeited'
   | 'cancelled';
+
+/** How the winner is decided: the players themselves, or Styx staff reviewing evidence. */
+export type ResolutionMethod = 'players' | 'review';
 
 export type PayoutRule = 'winner_takes_all' | 'proportional' | 'custom_split';
 
@@ -45,7 +49,8 @@ export interface BetRuling {
   reasoning: string;
   confidence?: number;
   judgedAt: string;
-  judgedBy: 'consensus' | 'arbitration' | 'appeal';
+  judgedBy: 'consensus' | 'arbitration' | 'appeal' | 'staff';
+  judgedByName?: string;
 }
 
 export interface Bet {
@@ -63,7 +68,11 @@ export interface Bet {
   odds: Record<string, number>;
   totalPot: number;
   payoutRule: PayoutRule;
-  deadline: string;
+  /** ISO date, or null/missing for bets with no deadline */
+  deadline?: string | null;
+  /** missing on older bets = 'players' */
+  resolution?: ResolutionMethod;
+  reviewRequestedAt?: string;
   status: BetStatus;
   vaultKey?: string;
   proof?: BetProof;
@@ -97,6 +106,8 @@ export interface UserProfile {
   registrationPaid?: boolean;
   paymentMethods?: UserPaymentMethod[];
   balance: number;
+  /** Styx team member who can settle bets under review. Set by hand in Firestore. */
+  isStaff?: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -136,5 +147,17 @@ export interface PrivateProfile {
   /** two-letter US state code */
   state: string;
   termsAcceptedAt: string;
+  createdAt: string;
+}
+
+/** Proof attached to a bet — stored at bets/{betId}/evidence/{id}. */
+export interface Evidence {
+  id: string;
+  betId: string;
+  userId: string;
+  userName: string;
+  text?: string;
+  /** small JPEG, base64 (no data: prefix) */
+  imageBase64?: string;
   createdAt: string;
 }
