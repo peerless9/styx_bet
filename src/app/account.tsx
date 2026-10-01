@@ -51,6 +51,18 @@ export default function Account() {
         )}
       </Card>
 
+      {currentUser?.isStaff ? (
+        <Card onPress={() => router.push('/review')}>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Row gap={8}>
+              <Ionicons name="shield-checkmark" size={18} color={C.ink} />
+              <T v="bodyBold">Staff review queue</T>
+            </Row>
+            <Ionicons name="chevron-forward" size={18} color={C.faint} />
+          </Row>
+        </Card>
+      ) : null}
+
       {!isDemo ? (
         <>
           <Row gap={6}>

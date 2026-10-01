@@ -36,7 +36,14 @@
           "imageWidth": 120
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Styx uses your photos so you can attach evidence to a bet.",
+          "cameraPermission": "Styx uses the camera so you can photograph evidence for a bet."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

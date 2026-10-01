@@ -5,58 +5,36 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 
 import { TopBar } from '@/components/TopBar';
-import {
-  Avatar,
-  Banner,
-  Button,
-  Card,
-  Chip,
-  ChoiceRow,
-  Field,
-  MoneyField,
-  Row,
-  Screen,
-  T,
-  success,
-  tap,
-} from '@/components/ui';
+import { Avatar, Banner, Button, Chip, MoneyField, Row, Screen, Segmented, T, success, tap, type IconName } from '@/components/ui';
 import { C, money } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useBets, type BetDraft } from '@/context/BetsContext';
 import { PUBLIC_WEB_URL } from '@/lib/firebase';
-import type { BetType, PayoutRule, StanceCategory, UserProfile } from '@/lib/types';
-import {
-  WEEKLY_HOT_TOPICS,
-  calculateOdds,
-  createBet,
-  extractRecentOpponents,
-  searchRegisteredUsers,
-} from '@/services/betService';
+import type { BetType, ResolutionMethod, UserProfile } from '@/lib/types';
+import { WEEKLY_HOT_TOPICS, calculateOdds, createBet, extractRecentOpponents, searchRegisteredUsers } from '@/services/betService';
 
-interface Opp {
-  user: { id: string; name: string; username?: string; photo?: string };
-  side: string;
-  stake: number;
-}
+type Person = { id: string; name: string; username?: string; photo?: string };
+type Who = 'friends' | 'anyone' | 'solo';
 
 const PRESETS = [
   { label: 'Yes / No', sides: ['Yes', 'No'] },
   { label: 'Over / Under', sides: ['Over', 'Under'] },
-  { label: 'Win / Lose / Tie', sides: ['Win', 'Lose', 'Tie'] },
-  { label: 'Team A / Team B', sides: ['Team A', 'Team B'] },
+  { label: 'Win / Lose / Draw', sides: ['Win', 'Lose', 'Draw'] },
 ];
 
-const DEADLINES = [
-  { label: '24 hours', hours: 24 },
-  { label: '2 days', hours: 48 },
-  { label: '3 days', hours: 72 },
-  { label: '1 week', hours: 168 },
-  { label: '2 weeks', hours: 336 },
+const DEADLINES: { id: string; label: string; hours: number | null }[] = [
+  { id: 'none', label: 'No deadline', hours: null },
+  { id: '24', label: 'Tomorrow', hours: 24 },
+  { id: '72', label: '3 days', hours: 72 },
+  { id: '168', label: '1 week', hours: 168 },
+  { id: '720', label: '1 month', hours: 720 },
 ];
+
+const STAKES = [5, 10, 25, 50];
 
 export default function CreateScreen() {
   const { draft, draftVersion } = useBets();
-  // Remount the form whenever a new draft (hot topic / rematch) is handed over
+  // A new draft (hot topic / rematch) remounts the form with those values
   return (
     <Screen header={<TopBar />}>
       <CreateForm key={draftVersion} draft={draft} />
@@ -64,48 +42,64 @@ export default function CreateScreen() {
   );
 }
 
+function Section({ n, title, children, right }: { n: number; title: string; children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <View style={{ gap: 10 }}>
+      <Row style={{ justifyContent: 'space-between' }}>
+        <Row gap={8}>
+          <View style={s.num}>
+            <T v="tiny" style={{ color: '#fff', fontWeight: '800' }}>
+              {n}
+            </T>
+          </View>
+          <T v="h3">{title}</T>
+        </Row>
+        {right}
+      </Row>
+      {children}
+    </View>
+  );
+}
+
 function CreateForm({ draft }: { draft: BetDraft | null }) {
-  const { currentUser, mockUsersList } = useAuth();
+  const { currentUser, mockUsersList, isDemo } = useAuth();
   const { bets, setDraft } = useBets();
   const tpl = draft?.topicIndex !== undefined ? WEEKLY_HOT_TOPICS[draft.topicIndex] : undefined;
 
   const [terms, setTerms] = useState(tpl?.terms || draft?.terms || '');
-  const [topic, setTopic] = useState(tpl?.topic || '');
-  const [stance, setStance] = useState<StanceCategory>(tpl?.category || 'binary');
   const [sides, setSides] = useState<string[]>(tpl?.sides || ['Yes', 'No']);
-  const [newSide, setNewSide] = useState('');
-  const [myStake, setMyStake] = useState(tpl?.suggestedStake || 25);
   const [mySide, setMySide] = useState((tpl?.sides || ['Yes'])[0]);
+  const [newSide, setNewSide] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [stake, setStake] = useState(tpl?.suggestedStake || 10);
+  const [who, setWho] = useState<Who>('friends');
+  const [people, setPeople] = useState<Person[]>(
+    () =>
+      draft?.participants
+        ?.filter((p) => p.userId !== currentUser?.id)
+        .map((p) => ({ id: p.userId, name: p.name, username: p.username, photo: p.photo })) || []
+  );
+  const [resolution, setResolution] = useState<ResolutionMethod>('players');
+  const [deadlineId, setDeadlineId] = useState('72');
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<UserProfile[]>([]);
-  const [solo, setSolo] = useState(false);
-  const [openToAll, setOpenToAll] = useState(false);
-  const [payout, setPayout] = useState<PayoutRule>('winner_takes_all');
-  const [hours, setHours] = useState(48);
+  const [resultsFor, setResultsFor] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const [opps, setOpps] = useState<Opp[]>(() => {
-    const fromDraft = draft?.participants?.filter((p) => p.userId !== currentUser?.id) || [];
-    if (fromDraft.length) {
-      return fromDraft.map((p) => ({ user: { id: p.userId, name: p.name, username: p.username, photo: p.photo }, side: p.side || 'No', stake: p.stake || 25 }));
-    }
-    const friend = mockUsersList.find((u) => u.id !== currentUser?.id);
-    const opposite = (tpl?.sides || ['Yes', 'No'])[1];
-    return friend ? [{ user: { id: friend.id, name: friend.name, username: friend.username, photo: friend.photo }, side: opposite, stake: tpl?.suggestedStake || 25 }] : [];
-  });
+  // Suggestions: people you've bet with (plus demo personas in demo mode)
+  const recent = useMemo(
+    () => extractRecentOpponents(bets, currentUser?.id || '', isDemo ? mockUsersList : []).filter((u) => !people.some((p) => p.id === u.id)),
+    [bets, currentUser?.id, mockUsersList, isDemo, people]
+  );
 
-  const recent = useMemo(() => extractRecentOpponents(bets, currentUser?.id || '', mockUsersList), [bets, currentUser?.id, mockUsersList]);
-
-  // Debounced user search; `resultsFor` tracks which query the results belong to
-  const [resultsFor, setResultsFor] = useState('');
   const query = search.trim();
   const searching = !!query && resultsFor !== query;
   useEffect(() => {
     if (!query || !currentUser) return;
     let live = true;
     const t = setTimeout(async () => {
-      const r = await searchRegisteredUsers(query, currentUser.id, mockUsersList).catch(() => []);
+      const r = await searchRegisteredUsers(query, currentUser.id, isDemo ? mockUsersList : []).catch(() => []);
       if (live) {
         setResults(r);
         setResultsFor(query);
@@ -115,59 +109,54 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
       live = false;
       clearTimeout(t);
     };
-  }, [query, currentUser, mockUsersList]);
+  }, [query, currentUser, mockUsersList, isDemo]);
 
-  const betType: BetType = openToAll ? 'open' : solo || opps.length === 0 ? 'personal' : opps.length === 1 ? '1-on-1' : 'group';
+  const deadlineHours = DEADLINES.find((d) => d.id === deadlineId)?.hours ?? null;
+  const deadlineDate = deadlineHours ? addHours(new Date(), deadlineHours) : null;
+  const opponents = who === 'friends' ? people : [];
+  const players = 1 + opponents.length;
+  const pot = stake * players;
+  // Friends are put on a different side than you by default; they can switch when they accept
+  const otherSide = (i: number) => {
+    const others = sides.filter((x) => x !== mySide);
+    return others[i % others.length] || sides[0];
+  };
 
-  const stakes = useMemo(() => {
-    const m: Record<string, number> = {};
-    sides.forEach((s) => (m[s] = 0));
-    m[mySide] = (m[mySide] || 0) + myStake;
-    opps.forEach((o) => (m[o.side] = (m[o.side] || 0) + o.stake));
-    return m;
-  }, [sides, mySide, myStake, opps]);
-  const pot = Object.values(stakes).reduce((a, b) => a + b, 0);
-  const odds = useMemo(() => calculateOdds(stakes, pot), [stakes, pot]);
-
-  const addOpp = (u: UserProfile) => {
-    if (opps.some((o) => o.user.id === u.id)) return;
+  const addPerson = (u: UserProfile | Person) => {
+    if (people.some((p) => p.id === u.id)) return;
     tap();
-    setOpps((prev) => [...prev, { user: { id: u.id, name: u.name, username: u.username, photo: u.photo }, side: sides.find((s) => s !== mySide) || sides[0], stake: myStake || 25 }]);
-    setSolo(false);
+    setPeople((prev) => [...prev, { id: u.id, name: u.name, username: u.username, photo: u.photo }]);
+    setWho('friends');
     setSearch('');
   };
-  const removeOpp = (id: string) => setOpps((p) => p.filter((o) => o.user.id !== id));
-  const updateOpp = (id: string, u: Partial<Opp>) => setOpps((p) => p.map((o) => (o.user.id === id ? { ...o, ...u } : o)));
+  const removePerson = (id: string) => setPeople((p) => p.filter((x) => x.id !== id));
 
+  const applyTopic = (i: number) => {
+    const t = WEEKLY_HOT_TOPICS[i];
+    tap();
+    setTerms(t.terms);
+    setSides(t.sides);
+    setMySide(t.sides[0]);
+    setStake(t.suggestedStake);
+  };
   const applySides = (next: string[]) => {
     setSides(next);
     setMySide(next[0]);
-    setOpps((p) => p.map((o) => ({ ...o, side: next[1] || next[0] })));
-    setError('');
-  };
-  const applyTemplate = (i: number) => {
-    const t = WEEKLY_HOT_TOPICS[i];
-    setTopic(t.topic);
-    setTerms(t.terms);
-    setStance(t.category);
-    setMyStake(t.suggestedStake);
-    applySides(t.sides);
   };
   const addSide = () => {
     const name = newSide.trim();
-    if (!name) return;
-    if (sides.some((s) => s.toLowerCase() === name.toLowerCase())) return setError(`"${name}" is already a position.`);
-    setSides([...sides, name]);
+    setAdding(false);
     setNewSide('');
+    if (!name) return;
+    if (sides.some((x) => x.toLowerCase() === name.toLowerCase())) return setError(`"${name}" is already an option.`);
+    setSides([...sides, name]);
     setError('');
   };
   const removeSide = (side: string) => {
-    if (sides.length <= 2) return setError('A bet needs at least 2 positions.');
-    const next = sides.filter((s) => s !== side);
+    if (sides.length <= 2) return;
+    const next = sides.filter((x) => x !== side);
     setSides(next);
     if (mySide === side) setMySide(next[0]);
-    setOpps((p) => p.map((o) => (o.side === side ? { ...o, side: next[0] } : o)));
-    setError('');
   };
 
   const shareInvite = () => {
@@ -178,29 +167,34 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
   const submit = async () => {
     if (!currentUser) return;
     setError('');
-    if (!terms.trim()) return setError('Write the terms of the bet.');
-    if (sides.length < 2) return setError('Add at least 2 positions.');
-    if (myStake <= 0) return setError('Enter a stake.');
-    if ((currentUser.balance || 0) < myStake) return setError(`Not enough balance (${money(currentUser.balance)} available).`);
-    if (!solo && !openToAll && opps.length === 0) return setError('Pick an opponent, make it open to anyone, or bet on yourself.');
+    if (!terms.trim()) return setError('Say what the bet is.');
+    if (who === 'friends' && people.length === 0) return setError('Add at least one friend — or choose “Anyone” or “Just me”.');
+    if (stake <= 0) return setError('Enter a stake.');
+    if ((currentUser.balance || 0) < stake) return setError(`Not enough balance — you have ${money(currentUser.balance)}.`);
+
+    const stakesMap: Record<string, number> = Object.fromEntries(sides.map((x) => [x, 0]));
+    stakesMap[mySide] += stake;
+    opponents.forEach((_, i) => (stakesMap[otherSide(i)] += stake));
+    const betType: BetType = who === 'anyone' ? 'open' : who === 'solo' ? 'personal' : opponents.length === 1 ? '1-on-1' : 'group';
+
     try {
       setSubmitting(true);
       const id = await createBet({
         creator: currentUser,
         terms: terms.trim(),
-        topic: topic.trim() || undefined,
-        stanceCategory: stance,
+        stanceCategory: 'binary',
         betType,
         sides,
         creatorSide: mySide,
-        creatorStake: myStake,
-        opponents: opps.map((o) => ({ user: o.user, side: o.side, stake: o.stake })),
-        betOnYourself: solo,
-        odds,
+        creatorStake: stake,
+        opponents: opponents.map((p, i) => ({ user: p, side: otherSide(i), stake })),
+        betOnYourself: who === 'solo',
+        odds: calculateOdds(stakesMap, pot),
         totalPot: pot,
-        payoutRule: payout,
-        deadline: addHours(new Date(), hours).toISOString(),
-        isOpenToPublic: openToAll,
+        payoutRule: 'winner_takes_all',
+        deadline: deadlineDate ? deadlineDate.toISOString() : null,
+        resolution,
+        isOpenToPublic: who === 'anyone',
       });
       success();
       setDraft(null);
@@ -215,265 +209,264 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
 
   return (
     <>
-      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <View style={{ flex: 1, gap: 4 }}>
-          <T v="h2">Create Smart Contract Bet</T>
-          <T v="small">Escrowed stakes & mutual consensus verification</T>
-        </View>
-        <Button small kind="secondary" icon="share-outline" title="Invite" onPress={shareInvite} />
-      </Row>
+      <T v="h2">New bet</T>
 
-      {/* 1. Opponents */}
-      <Card>
-        <Row gap={6}>
-          <Ionicons name="people" size={16} color={C.ink} />
-          <T v="bodyBold">Choose opponents</T>
-        </Row>
-        <Row style={{ flexWrap: 'wrap' }}>
-          <Chip
-            label="Open for anyone"
-            icon="globe-outline"
-            selected={openToAll}
-            onPress={() => {
-              setOpenToAll(!openToAll);
-              if (!openToAll) setSolo(false);
-            }}
-          />
-          <Chip
-            label="Bet on yourself"
-            icon="person-outline"
-            selected={solo}
-            onPress={() => {
-              const next = !solo;
-              setSolo(next);
-              if (next) {
-                setOpps([]);
-                setOpenToAll(false);
-              }
-            }}
-          />
-        </Row>
-
-        <View style={s.search}>
-          <Ionicons name="search" size={17} color={C.faint} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search @username or name"
-            placeholderTextColor={C.faint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={{ flex: 1, fontSize: 16, color: C.ink, paddingVertical: 10 }}
-          />
-          {searching ? <ActivityIndicator size="small" /> : null}
-        </View>
-        {search.trim() && !searching ? (
-          results.length === 0 ? (
-            <T v="small">No one matches “{search}”. Tap Invite to send them a link.</T>
-          ) : (
-            <View style={{ gap: 4 }}>
-              {results.map((u) => {
-                const added = opps.some((o) => o.user.id === u.id);
-                return (
-                  <Pressable key={u.id} disabled={added} onPress={() => addOpp(u)} style={[s.result, added && { opacity: 0.4 }]}>
-                    <Avatar name={u.name} photo={u.photo} size={30} />
-                    <View style={{ flex: 1 }}>
-                      <T v="bodyBold">{u.name}</T>
-                      {u.username ? <T v="tiny">@{u.username}</T> : null}
-                    </View>
-                    <T v="small" style={{ color: C.ink, fontWeight: '700' }}>
-                      {added ? 'Added' : '+ Add'}
-                    </T>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )
-        ) : null}
-
-        {recent.length > 0 ? (
-          <View style={{ gap: 8 }}>
-            <T v="label">Recent opponents</T>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {recent.map((p) => (
-                <Chip key={p.id} label={p.name.split(' ')[0]} icon="person" selected={opps.some((o) => o.user.id === p.id)} onPress={() => (opps.some((o) => o.user.id === p.id) ? removeOpp(p.id) : addOpp(p))} />
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-
-        {opps.length === 0 ? (
-          <T v="small">
-            {openToAll ? 'Open bet: anyone on Styx can find and join it.' : solo ? 'Personal bet on your own goal.' : 'No opponents yet — search above or pick a recent one.'}
-          </T>
-        ) : null}
-      </Card>
-
-      {/* 2. Hot topics */}
-      <View style={{ gap: 8 }}>
-        <Row gap={6}>
-          <Ionicons name="sparkles" size={15} color={C.green} />
-          <T v="bodyBold">Hot topics for the week</T>
-        </Row>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 16 }} style={{ marginRight: -16 }}>
+      {/* 1. What */}
+      <Section n={1} title="What’s the bet?">
+        <TextInput
+          value={terms}
+          onChangeText={setTerms}
+          multiline
+          placeholder="e.g. I can run a mile under 7 minutes before Sunday"
+          placeholderTextColor={C.faint}
+          style={s.terms}
+        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 16 }} style={{ marginRight: -16 }}>
+          <Row gap={4} style={{ paddingRight: 4 }}>
+            <Ionicons name="flame" size={14} color={C.green} />
+            <T v="tiny" style={{ fontWeight: '700' }}>
+              Ideas
+            </T>
+          </Row>
           {WEEKLY_HOT_TOPICS.map((t, i) => (
-            <Pressable key={t.code} onPress={() => { tap(); applyTemplate(i); }} style={({ pressed }) => [s.topic, topic === t.topic && { borderColor: C.ink }, pressed && { opacity: 0.8 }]}>
-              <Row style={{ justifyContent: 'space-between' }}>
-                <T v="tiny" style={{ fontFamily: 'Menlo', color: C.faint }}>
-                  {t.code}
-                </T>
-                <T v="tiny" style={{ color: C.greenDark, fontWeight: '700' }}>
-                  ${t.suggestedStake}
-                </T>
-              </Row>
-              <T v="bodyBold" numberOfLines={2}>
-                {t.topic}
-              </T>
-            </Pressable>
+            <Chip key={t.code} label={t.topic} onPress={() => applyTopic(i)} />
           ))}
         </ScrollView>
-      </View>
+      </Section>
 
-      {/* 3. Terms */}
-      <Field label="Contract terms" value={terms} onChangeText={setTerms} multiline placeholder="e.g. Alex runs a sub-20 min 5K before Sunday, with Strava link…" />
+      {/* 2. Who */}
+      <Section
+        n={2}
+        title="Who’s in?"
+        right={
+          who === 'friends' ? (
+            <Pressable onPress={shareInvite} hitSlop={8}>
+              <Row gap={4}>
+                <Ionicons name="link" size={14} color={C.ink} />
+                <T v="small" style={{ color: C.ink, fontWeight: '700' }}>
+                  Invite link
+                </T>
+              </Row>
+            </Pressable>
+          ) : null
+        }>
+        <Segmented<Who>
+          value={who}
+          onChange={setWho}
+          items={[
+            { id: 'friends', label: 'Friends' },
+            { id: 'anyone', label: 'Anyone' },
+            { id: 'solo', label: 'Just me' },
+          ]}
+        />
+        {who === 'friends' ? (
+          <>
+            {people.length ? (
+              <Row style={{ flexWrap: 'wrap' }}>
+                {people.map((p) => (
+                  <Pressable key={p.id} onPress={() => removePerson(p.id)} style={s.person}>
+                    <Avatar name={p.name} photo={p.photo} size={24} />
+                    <T v="bodyBold" style={{ fontSize: 14 }}>
+                      {p.name.split(' ')[0]}
+                    </T>
+                    <Ionicons name="close" size={14} color={C.muted} />
+                  </Pressable>
+                ))}
+              </Row>
+            ) : null}
+            <View style={s.search}>
+              <Ionicons name="search" size={17} color={C.faint} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Add a friend by name or @username"
+                placeholderTextColor={C.faint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={{ flex: 1, fontSize: 16, color: C.ink, paddingVertical: 11 }}
+              />
+              {searching ? <ActivityIndicator size="small" /> : null}
+            </View>
+            {query && !searching ? (
+              results.length ? (
+                <View style={{ gap: 4 }}>
+                  {results.slice(0, 5).map((u) => (
+                    <Pressable key={u.id} onPress={() => addPerson(u)} style={s.result}>
+                      <Avatar name={u.name} photo={u.photo} size={30} />
+                      <View style={{ flex: 1 }}>
+                        <T v="bodyBold">{u.name}</T>
+                        {u.username ? <T v="tiny">@{u.username}</T> : null}
+                      </View>
+                      <Ionicons name={people.some((p) => p.id === u.id) ? 'checkmark-circle' : 'add-circle-outline'} size={22} color={C.ink} />
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <T v="small">No one called “{query}” yet. Send them an invite link.</T>
+              )
+            ) : recent.length ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {recent.map((u) => (
+                  <Chip key={u.id} icon="add" label={u.name.split(' ')[0]} onPress={() => addPerson(u)} />
+                ))}
+              </ScrollView>
+            ) : null}
+          </>
+        ) : (
+          <T v="small">{who === 'anyone' ? 'Anyone on Styx can find this bet and take the other side.' : 'A bet with yourself — a goal with money on the line.'}</T>
+        )}
+      </Section>
 
-      {/* 4. Positions */}
-      <Card>
-        <Row gap={6}>
-          <Ionicons name="locate" size={16} color={C.ink} />
-          <T v="bodyBold">Positions ({sides.length})</T>
-        </Row>
+      {/* 3. Positions */}
+      <Section n={3} title="Your pick">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {PRESETS.map((p) => (
             <Chip key={p.label} label={p.label} selected={p.sides.join() === sides.join()} onPress={() => applySides(p.sides)} />
           ))}
         </ScrollView>
-        <View style={{ gap: 6 }}>
-          {sides.map((side, i) => {
-            const n = opps.filter((o) => o.side === side).length;
+        <View style={{ gap: 8 }}>
+          {sides.map((side) => {
+            const mine = side === mySide;
+            const others = opponents.filter((_, i) => otherSide(i) === side);
             return (
-              <Row key={side} style={s.position}>
-                <T v="tiny" style={{ width: 18, fontWeight: '800', color: C.faint }}>
-                  {i + 1}
-                </T>
-                <T v="bodyBold" style={{ flex: 1 }} numberOfLines={1}>
+              <Pressable
+                key={side}
+                onPress={() => {
+                  tap();
+                  setMySide(side);
+                }}
+                style={[s.option, mine && s.optionOn]}>
+                <Ionicons name={mine ? 'radio-button-on' : 'radio-button-off'} size={22} color={mine ? '#fff' : C.faint} />
+                <T v="bodyBold" style={{ flex: 1, color: mine ? '#fff' : C.ink }} numberOfLines={1}>
                   {side}
                 </T>
-                {mySide === side ? <T v="tiny" style={{ color: C.greenDark, fontWeight: '700' }}>Your pick</T> : null}
-                {n > 0 ? <T v="tiny">{n} opp.</T> : null}
-                <Pressable hitSlop={8} onPress={() => removeSide(side)} disabled={sides.length <= 2} style={{ opacity: sides.length <= 2 ? 0.25 : 1 }}>
-                  <Ionicons name="close-circle" size={20} color={C.faint} />
-                </Pressable>
-              </Row>
+                {mine ? <T v="tiny" style={{ color: '#A7F3D0', fontWeight: '700' }}>You</T> : null}
+                {others.length ? (
+                  <T v="tiny" style={{ color: mine ? '#D4D4D4' : C.muted }}>
+                    {others.map((o) => o.name.split(' ')[0]).join(', ')}
+                  </T>
+                ) : null}
+                {sides.length > 2 ? (
+                  <Pressable hitSlop={10} onPress={() => removeSide(side)}>
+                    <Ionicons name="close" size={18} color={mine ? '#D4D4D4' : C.faint} />
+                  </Pressable>
+                ) : null}
+              </Pressable>
             );
           })}
-        </View>
-        <Row>
-          <TextInput
-            value={newSide}
-            onChangeText={setNewSide}
-            onSubmitEditing={addSide}
-            returnKeyType="done"
-            placeholder="Add a position (e.g. Chiefs, Draw)"
-            placeholderTextColor={C.faint}
-            style={[s.inlineInput, { flex: 1 }]}
-          />
-          <Button small title="Add" icon="add" disabled={!newSide.trim()} onPress={addSide} />
-        </Row>
-      </Card>
-
-      {/* 5. Your position */}
-      <Card>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <T v="bodyBold">Your position & stake</T>
-          <T v="small">
-            Balance <T v="small" style={{ color: C.ink, fontWeight: '800' }}>{money(currentUser?.balance)}</T>
-          </T>
-        </Row>
-        <MoneyField label="Your stake" value={myStake} onChange={setMyStake} />
-        <View style={{ gap: 6 }}>
-          <T v="label">Your side</T>
-          <ChoiceRow options={sides} value={mySide} onChange={setMySide} />
-        </View>
-      </Card>
-
-      {/* 6. Opponent stakes */}
-      {opps.map((o) => (
-        <Card key={o.user.id}>
-          <Row style={{ justifyContent: 'space-between' }}>
-            <Row style={{ flex: 1 }}>
-              <Avatar name={o.user.name} photo={o.user.photo} size={30} />
-              <View style={{ flex: 1 }}>
-                <T v="bodyBold">{o.user.name}</T>
-                {o.user.username ? <T v="tiny">@{o.user.username}</T> : null}
-              </View>
-            </Row>
-            <Pressable hitSlop={8} onPress={() => removeOpp(o.user.id)}>
-              <Ionicons name="close-circle" size={22} color={C.faint} />
+          {adding ? (
+            <View style={[s.option, { paddingVertical: 4 }]}>
+              <Ionicons name="add" size={22} color={C.faint} />
+              <TextInput
+                value={newSide}
+                onChangeText={setNewSide}
+                onSubmitEditing={addSide}
+                onBlur={addSide}
+                autoFocus
+                returnKeyType="done"
+                placeholder="New option"
+                placeholderTextColor={C.faint}
+                style={{ flex: 1, fontSize: 16, color: C.ink, paddingVertical: 10 }}
+              />
+            </View>
+          ) : (
+            <Pressable onPress={() => setAdding(true)} style={s.addOption}>
+              <Ionicons name="add" size={18} color={C.muted} />
+              <T v="small" style={{ fontWeight: '600' }}>
+                Add an option
+              </T>
             </Pressable>
-          </Row>
-          <MoneyField label="Their stake" value={o.stake} onChange={(n) => updateOpp(o.user.id, { stake: n })} />
-          <View style={{ gap: 6 }}>
-            <T v="label">Their side</T>
-            <ChoiceRow options={sides} value={o.side} onChange={(v) => updateOpp(o.user.id, { side: v })} />
-          </View>
-        </Card>
-      ))}
-
-      {/* 7. Deadline & payout */}
-      <Card>
-        <View style={{ gap: 6 }}>
-          <T v="label">Settlement deadline</T>
-          <ChoiceRow options={DEADLINES.map((d) => String(d.hours))} value={String(hours)} onChange={(v) => setHours(Number(v))} labels={Object.fromEntries(DEADLINES.map((d) => [String(d.hours), d.label]))} />
-          <T v="tiny">Ends {format(addHours(new Date(), hours), "EEE, MMM d 'at' h:mm a")}</T>
+          )}
         </View>
-        <View style={{ gap: 6 }}>
-          <T v="label">Payout</T>
-          <ChoiceRow<PayoutRule>
-            options={['winner_takes_all', 'proportional']}
-            value={payout}
-            onChange={setPayout}
-            labels={{ winner_takes_all: 'Winner takes all', proportional: 'Proportional split' }}
-          />
-        </View>
-        <Row style={{ alignItems: 'flex-start' }}>
-          <Ionicons name="lock-closed" size={14} color={C.muted} style={{ marginTop: 2 }} />
-          <T v="tiny" style={{ flex: 1 }}>
-            Your stake is held in escrow right away. The bet locks when every challenger accepts.
-          </T>
-        </Row>
-      </Card>
+        {opponents.length ? <T v="tiny">Friends can switch sides when they accept.</T> : null}
+      </Section>
 
-      {/* Summary */}
-      <View style={s.summary}>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <T v="label" style={{ color: '#A3A3A3' }}>
-            Total escrow pot
-          </T>
-          <T v="money" style={{ color: '#fff' }}>
-            {money(pot)}
-          </T>
-        </Row>
-        <Row style={{ flexWrap: 'wrap', gap: 12 }}>
-          {sides.map((side) => (
-            <T key={side} v="tiny" style={{ color: '#D4D4D4' }}>
-              {side}: <T v="tiny" style={{ color: '#6EE7B7', fontWeight: '800' }}>{(odds[side] || 2).toFixed(2)}x</T>
-            </T>
+      {/* 4. Stake */}
+      <Section n={4} title="Stake" right={<T v="small">Balance {money(currentUser?.balance)}</T>}>
+        <Row>
+          {STAKES.map((v) => (
+            <Chip key={v} label={`$${v}`} selected={stake === v} onPress={() => setStake(v)} />
           ))}
         </Row>
-      </View>
+        <MoneyField value={stake} onChange={setStake} />
+        <T v="tiny">{who === 'solo' ? 'You put this in escrow. Win and you get it back.' : 'Everyone puts in the same amount. Winner takes the pot.'}</T>
+      </Section>
 
+      {/* 5. Resolution */}
+      <Section n={5} title="Who decides the winner?">
+        {(
+          [
+            { id: 'players', icon: 'people', title: 'Players decide', text: 'When it’s over, everyone picks who won. If you don’t agree, the Styx team reviews it.' },
+            { id: 'review', icon: 'document-text', title: 'Evidence review', text: 'When it’s over, upload proof (photos, screenshots, notes). A Styx team member picks the winner.' },
+          ] as { id: ResolutionMethod; icon: IconName; title: string; text: string }[]
+        ).map((o) => {
+          const on = resolution === o.id;
+          return (
+            <Pressable
+              key={o.id}
+              onPress={() => {
+                tap();
+                setResolution(o.id);
+              }}
+              style={[s.method, on && { borderColor: C.ink, borderWidth: 2 }]}>
+              <View style={[s.methodIcon, on && { backgroundColor: C.ink }]}>
+                <Ionicons name={o.icon} size={18} color={on ? '#fff' : C.ink} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <T v="bodyBold">{o.title}</T>
+                <T v="small">{o.text}</T>
+              </View>
+              <Ionicons name={on ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={on ? C.ink : C.line} />
+            </Pressable>
+          );
+        })}
+      </Section>
+
+      {/* 6. Deadline */}
+      <Section n={6} title="Deadline">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 16 }} style={{ marginRight: -16 }}>
+          {DEADLINES.map((d) => (
+            <Chip key={d.id} label={d.label} selected={deadlineId === d.id} onPress={() => setDeadlineId(d.id)} />
+          ))}
+        </ScrollView>
+        <T v="tiny">
+          {deadlineDate
+            ? `Ends ${format(deadlineDate, "EEE, MMM d 'at' h:mm a")}. The winner is decided after that.`
+            : 'No deadline — decide the winner whenever it’s done.'}
+        </T>
+      </Section>
+
+      {/* Summary + post */}
+      <View style={s.summary}>
+        <Row style={{ justifyContent: 'space-between' }}>
+          <T v="small" style={{ color: '#A3A3A3' }}>
+            {players} {players === 1 ? 'player' : 'players'} × {money(stake)}
+          </T>
+          <T v="money" style={{ color: '#fff' }}>
+            {money(pot)} pot
+          </T>
+        </Row>
+        <T v="tiny" style={{ color: '#A3A3A3' }}>
+          Your {money(stake)} is held in escrow when you post.
+          {who === 'friends' ? ' The bet locks once everyone accepts.' : ''}
+        </T>
+      </View>
       {error ? <Banner text={error} /> : null}
-      <Button title="Post Smart Contract Bet" icon="paper-plane" loading={submitting} onPress={submit} />
+      <Button title="Post bet" icon="paper-plane" loading={submitting} onPress={submit} />
     </>
   );
 }
 
 const s = StyleSheet.create({
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 14, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line },
-  result: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 12, backgroundColor: C.bg },
-  topic: { width: 190, gap: 6, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
-  position: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: C.bg, borderWidth: 1, borderColor: C.lineSoft },
-  inlineInput: { backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 16, color: C.ink },
-  summary: { backgroundColor: C.ink, borderRadius: 20, padding: 16, gap: 10 },
+  num: { width: 22, height: 22, borderRadius: 11, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
+  terms: { backgroundColor: C.card, borderWidth: 1, borderColor: C.line, borderRadius: 16, padding: 14, paddingTop: 14, minHeight: 90, fontSize: 17, color: C.ink, textAlignVertical: 'top' },
+  person: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4, paddingRight: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 14, backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
+  result: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 12, backgroundColor: C.card },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 14, borderRadius: 14, backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
+  optionOn: { backgroundColor: C.ink, borderColor: C.ink },
+  addOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, borderStyle: 'dashed' },
+  method: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.line },
+  methodIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.fill, alignItems: 'center', justifyContent: 'center' },
+  summary: { backgroundColor: C.ink, borderRadius: 18, padding: 16, gap: 6 },
 });

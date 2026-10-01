@@ -23,10 +23,8 @@ export default function Inbox() {
 
   const isMember = (b: Bet) => b.participantIds?.includes(uid) || b.creatorId === uid;
   const sent = bets.filter((b) => b.creatorId === uid && b.status === 'pending');
-  const active = bets.filter((b) => isMember(b) && (b.status === 'locked' || b.status === 'settling'));
-  const past = bets.filter(
-    (b) => isMember(b) && ['settled', 'cancelled', 'charity', 'system_forfeited', 'disputed'].includes(b.status)
-  );
+  const active = bets.filter((b) => isMember(b) && ['locked', 'settling', 'disputed', 'in_review'].includes(b.status));
+  const past = bets.filter((b) => isMember(b) && ['settled', 'cancelled', 'charity', 'system_forfeited'].includes(b.status));
 
   // live countdown
   const [now, setNow] = useState(() => Date.now());
@@ -34,9 +32,12 @@ export default function Inbox() {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  const countdown = (deadline: string) => {
-    const diff = new Date(deadline).getTime() - now;
-    if (diff <= 0) return 'In settlement';
+  const countdown = (bet: Bet) => {
+    if (bet.status === 'in_review') return 'In Styx review';
+    if (bet.status === 'disputed') return 'Picks didn’t match';
+    if (!bet.deadline) return 'No deadline';
+    const diff = new Date(bet.deadline).getTime() - now;
+    if (diff <= 0) return (bet.resolution || 'players') === 'review' ? 'Send your proof' : 'Pick the winner';
     const h = Math.floor(diff / 3.6e6);
     const m = Math.floor((diff % 3.6e6) / 6e4);
     const sec = Math.floor((diff % 6e4) / 1000);
@@ -174,11 +175,17 @@ export default function Inbox() {
             return (
               <Card key={bet.id} onPress={() => router.push(`/bet/${bet.id}`)}>
                 <Row style={{ justifyContent: 'space-between' }}>
-                  <Pill label="Escrow locked" icon="lock-closed" tone="dark" />
+                  {bet.status === 'in_review' ? (
+                    <Pill label="In review" icon="eye-outline" tone="amber" />
+                  ) : bet.status === 'disputed' ? (
+                    <Pill label="Disputed" tone="red" />
+                  ) : (
+                    <Pill label="Escrow locked" icon="lock-closed" tone="dark" />
+                  )}
                   <Row gap={4}>
                     <Ionicons name="time-outline" size={14} color={C.muted} />
                     <T v="tiny" style={{ fontVariant: ['tabular-nums'], fontWeight: '600' }}>
-                      {countdown(bet.deadline)}
+                      {countdown(bet)}
                     </T>
                   </Row>
                 </Row>
