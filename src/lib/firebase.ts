@@ -9,14 +9,14 @@ const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'demo-api-key',
   authDomain:
     process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ||
-    'ai-studio-00d96413-2d17-4cda-86e5-25399e358b7c.firebaseapp.com',
+    'gen-lang-client-0873594168.firebaseapp.com',
   projectId:
-    process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'ai-studio-00d96413-2d17-4cda-86e5-25399e358b7c',
+    process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'gen-lang-client-0873594168',
   storageBucket:
     process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET ||
-    'ai-studio-00d96413-2d17-4cda-86e5-25399e358b7c.appspot.com',
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '873618697782',
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:873618697782:web:00d964132d174cda86e525',
+    'gen-lang-client-0873594168.firebasestorage.app',
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '284912344964',
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:284912344964:web:2f023b5e3f33ba1f0f87d1',
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -43,4 +43,4 @@ export const FIREBASE_CONFIG_MISSING = firebaseConfig.apiKey === 'demo-api-key';
 
 /** Public web URL used in invite links you send to friends. */
 export const PUBLIC_WEB_URL =
-  process.env.EXPO_PUBLIC_WEB_URL || 'https://ai-studio-00d96413-2d17-4cda-86e5-25399e358b7c.web.app';
+  process.env.EXPO_PUBLIC_WEB_URL || 'https://gen-lang-client-0873594168.web.app';
