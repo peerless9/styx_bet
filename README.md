@@ -1,56 +1,62 @@
-# Welcome to your Expo app 👋
+# Styx Bet — iPhone app (Expo)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Native iPhone version of Styx Bet. It uses the same Firebase database as the web app, so bets,
+users and the ledger are shared between both.
 
-## Get started
+## Run it on your iPhone (about 5 minutes)
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+You need **Node.js** on your Mac (`node -v` should print v20 or newer) and the free
+**Expo Go** app on your iPhone. Keep both on the same Wi-Fi.
 
 ```bash
-npm run reset-project
+cd styx-mobile
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+A QR code appears in Terminal. Open the iPhone **Camera** app, point it at the QR code and tap the
+banner — Styx opens in Expo Go. Save any file and the app on your phone updates instantly.
 
-### Other setup steps
+- Shake the phone to open the dev menu (reload, etc.).
+- If the phone can't connect (school/eduroam Wi-Fi often blocks it), run `npx expo start --tunnel`.
+- Press `i` in the Terminal to open the iPhone Simulator instead (needs Xcode installed).
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Trying it out
 
-## Learn more
+You start as the demo persona **Alex Rivera**. Tap your avatar (top right) to switch to Samantha,
+Jordan or David — e.g. post a bet as Alex against Samantha, switch to Samantha, accept it in the
+Inbox, then both vote on the winner. No bets yet? Tap **Load samples** on the Bets tab.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Project layout
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```
+src/app/(tabs)/       the 5 tabs: index (Bets), inbox, create (Post), ledger, ranks
+src/app/bet/[id].tsx  bet detail sheet: sign & lock, vote, dispute, verdict
+src/app/share/[id].tsx share card → iOS share sheet / Save Image
+src/app/wallet.tsx, register.tsx, audit.tsx, account.tsx, username.tsx   other sheets
+src/services/betService.ts   all bet logic (same as the web app)
+src/context/          AuthContext (demo personas), BetsContext (live bets feed)
+src/components/ui.tsx shared buttons, cards, inputs, pills
+src/constants/theme.ts colors
+```
 
-## Join the community
+## Getting it on friends' phones (TestFlight)
 
-Join our community of developers creating universal apps.
+Needs the Apple Developer Program ($99/yr) and a free Expo account (expo.dev).
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+npm install -g eas-cli
+eas login
+eas build --platform ios --profile production   # builds in the cloud, no Xcode needed
+eas submit --platform ios                        # uploads to App Store Connect → TestFlight
+```
+
+Before that, change `ios.bundleIdentifier` in `app.json` (`com.styxbet.app`) to something you own.
+
+## Not done yet
+
+- **Real sign-in (Google / Apple).** Needs a development build, not Expo Go. Until then the app
+  uses the demo personas.
+- **Push notifications** for new challenges (also needs a development build).
+- **Real money.** Balances are play money. Real-money escrow and payouts need gambling /
+  money-transmission licensing, and the App Store won't accept it without that.

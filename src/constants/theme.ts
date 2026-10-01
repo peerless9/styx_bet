@@ -1,65 +1,30 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
-import '@/global.css';
-
 import { Platform } from 'react-native';
 
-export const Colors = {
-  light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-  },
-  dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-  },
+/** Styx palette — matches the web app (neutral + emerald accent). */
+export const C = {
+  bg: '#F8FAFC',
+  card: '#FFFFFF',
+  ink: '#0A0A0A',
+  text: '#171717',
+  muted: '#737373',
+  faint: '#A3A3A3',
+  line: '#E5E5E5',
+  lineSoft: '#F0F0F0',
+  fill: '#F5F5F5',
+  green: '#059669',
+  greenDark: '#047857',
+  greenBg: '#ECFDF5',
+  greenLine: '#A7F3D0',
+  red: '#DC2626',
+  redBg: '#FEF2F2',
+  redLine: '#FECACA',
+  amber: '#B45309',
+  amberBg: '#FFFBEB',
+  amberLine: '#FDE68A',
 } as const;
 
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+export const R = { sm: 10, md: 14, lg: 20, pill: 999 } as const;
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
-});
+export const mono = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
-export const Spacing = {
-  half: 2,
-  one: 4,
-  two: 8,
-  three: 16,
-  four: 24,
-  five: 32,
-  six: 64,
-} as const;
-
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;
+export const money = (n: number | undefined) => `$${(n || 0).toFixed(2)}`;

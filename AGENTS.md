@@ -39,3 +39,11 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Styx Bet specifics
+
+- iPhone-first social betting app. Same Firebase project/Firestore as the web app (`styx_bet` repo); `src/services/betService.ts` is shared logic — keep it in sync with the web version.
+- Auth is demo personas only (`src/context/AuthContext.tsx`) so the app runs in Expo Go. Don't add native modules outside Expo Go without saying a development build is now required.
+- Tabs use `NativeTabs` from `expo-router/unstable-native-tabs` (SDK 57). Other screens are modal sheets registered in `src/app/_layout.tsx`.
+- UI primitives live in `src/components/ui.tsx` and colors in `src/constants/theme.ts` — reuse them rather than inline styles.
+- Money is play money. Don't build real payments without the user explicitly deciding to.
