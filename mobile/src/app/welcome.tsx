@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Logo } from '@/components/Logo';
 import { Banner, Button, T } from '@/components/ui';
 import { C } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
@@ -14,8 +15,8 @@ export default function Welcome() {
   return (
     <View style={[s.wrap, { paddingTop: insets.top + 24, paddingBottom: Math.max(insets.bottom, 20) }]}>
       <View style={s.hero}>
-        <View style={s.logo}>
-          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 40 }}>S</Text>
+        <View style={{ marginBottom: 8 }}>
+          <Logo size={88} radius={24} />
         </View>
         <T v="h1" style={{ fontSize: 34, textAlign: 'center' }}>
           Styx Bet
@@ -43,5 +44,4 @@ export default function Welcome() {
 const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 24, justifyContent: 'space-between' },
   hero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
-  logo: { width: 88, height: 88, borderRadius: 24, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
 });

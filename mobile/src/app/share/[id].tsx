@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
+import { Logo } from '@/components/Logo';
 import { Banner, Button, Pill, Row, Sheet, T } from '@/components/ui';
 import { C, money } from '@/constants/theme';
 import { useBets } from '@/context/BetsContext';
@@ -53,11 +54,7 @@ export default function ShareCard() {
       <View ref={cardRef} collapsable={false} style={s.card}>
         <Row style={{ justifyContent: 'space-between' }}>
           <Row gap={8}>
-            <View style={s.logo}>
-              <T v="bodyBold" style={{ color: '#fff' }}>
-                S
-              </T>
-            </View>
+            <Logo size={26} radius={8} />
             <T v="bodyBold">Styx Public Escrow</T>
           </Row>
           <Pill label={bet.status.toUpperCase()} tone="green" />
@@ -93,6 +90,5 @@ export default function ShareCard() {
 
 const s = StyleSheet.create({
   card: { backgroundColor: '#FAFAFA', borderRadius: 22, borderWidth: 1, borderColor: C.line, padding: 18, gap: 14 },
-  logo: { width: 26, height: 26, borderRadius: 8, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   box: { backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.line, padding: 12, gap: 2 },
 });

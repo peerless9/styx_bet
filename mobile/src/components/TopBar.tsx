@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Logo } from '@/components/Logo';
 import { Avatar, tap } from '@/components/ui';
 import { C, money } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
@@ -12,9 +13,7 @@ export function TopBar() {
   return (
     <View style={s.bar}>
       <View style={s.brand}>
-        <View style={s.logo}>
-          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 15 }}>S</Text>
-        </View>
+        <Logo size={34} radius={10} />
         <View>
           <Text style={{ fontSize: 17, fontWeight: '800', color: C.ink, letterSpacing: -0.3 }}>Styx Bet</Text>
           <Text style={{ fontSize: 11, color: C.muted, fontWeight: '500' }}>Social Smart Contracts</Text>
@@ -58,7 +57,6 @@ const s = StyleSheet.create({
     borderBottomColor: C.line,
   },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  logo: { width: 34, height: 34, borderRadius: 10, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   balance: {
     flexDirection: 'row',
     alignItems: 'center',
