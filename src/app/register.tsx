@@ -5,13 +5,16 @@ import { View } from 'react-native';
 import { SignaturePad } from '@/components/SignaturePad';
 import { Banner, Button, Card, Check, Field, Row, Segmented, Sheet, T, success } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
+import { parseDob } from '@/lib/validation';
 import { completeUserRegistration } from '@/services/betService';
 
 export default function Register() {
-  const { currentUser } = useAuth();
+  const { currentUser, privateProfile } = useAuth();
+  const legalName = privateProfile ? `${privateProfile.legalFirstName} ${privateProfile.legalLastName}` : '';
+  const dobAge = privateProfile ? parseDob(`${privateProfile.dateOfBirth.slice(5, 7)}/${privateProfile.dateOfBirth.slice(8)}/${privateProfile.dateOfBirth.slice(0, 4)}`)?.age : undefined;
   const [step, setStep] = useState<'1' | '2'>('1');
-  const [name, setName] = useState(currentUser?.name || '');
-  const [age, setAge] = useState(String(currentUser?.age || ''));
+  const [name, setName] = useState(legalName || currentUser?.name || '');
+  const [age, setAge] = useState(String(dobAge || currentUser?.age || ''));
   const [brand, setBrand] = useState('Visa');
   const [last4, setLast4] = useState('');
   const [signature, setSignature] = useState(currentUser?.signature || '');

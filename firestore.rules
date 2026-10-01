@@ -1,0 +1,30 @@
+rules_version = '2';
+
+// Suggested Firestore rules for Styx. Paste into Firebase console → Firestore Database → Rules.
+//
+// The web app and demo mode still write without signing in, and settling a bet updates
+// other players' balances from the client, so bets / users / transactions stay open for now.
+// What this DOES lock down: each person's private details (legal name, birthday, phone,
+// email, state) can only be read or written by that signed-in person.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Private account details — owner only
+    match /users/{uid}/private/{doc} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Public profiles (name, @username, balance)
+    match /users/{uid} {
+      allow read, write: if true;
+    }
+
+    match /bets/{betId} {
+      allow read, write: if true;
+    }
+
+    match /transactions/{txId} {
+      allow read, write: if true;
+    }
+  }
+}

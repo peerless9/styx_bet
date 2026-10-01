@@ -123,3 +123,18 @@ export interface Transaction {
   note?: string;
   signature?: string;
 }
+
+/** Private account details — stored at users/{uid}/private/profile, readable only by the owner. */
+export interface PrivateProfile {
+  legalFirstName: string;
+  legalLastName: string;
+  /** YYYY-MM-DD */
+  dateOfBirth: string;
+  email: string;
+  /** E.164, e.g. +15105551234 */
+  phone: string;
+  /** two-letter US state code */
+  state: string;
+  termsAcceptedAt: string;
+  createdAt: string;
+}

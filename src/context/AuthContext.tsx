@@ -1,9 +1,19 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import {
+  createUserWithEmailAndPassword,
+  deleteUser,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut as fbSignOut,
+  updateProfile,
+  type User as FirebaseUser,
+} from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, limit, onSnapshot, query, setDoc, where, writeBatch } from 'firebase/firestore';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
-import { db } from '@/lib/firebase';
-import type { UserProfile } from '@/lib/types';
+import { auth, db } from '@/lib/firebase';
+import type { PrivateProfile, UserProfile } from '@/lib/types';
 
 export const MOCK_USERS: UserProfile[] = [
   {
@@ -85,47 +95,120 @@ export const MOCK_USERS: UserProfile[] = [
 ];
 
 
-const ACTIVE_USER_KEY = 'styx.activeUserId';
+const DEMO_KEY = 'styx.demoUserId';
+const STARTING_BALANCE = 100; // play money for new accounts
+
+export type AuthStatus = 'loading' | 'signedOut' | 'signedIn' | 'demo';
+
+export interface SignUpData {
+  email: string;
+  password: string;
+  legalFirstName: string;
+  legalLastName: string;
+  dateOfBirth: string; // YYYY-MM-DD
+  phone: string; // E.164
+  state: string;
+  username: string;
+  displayName: string;
+}
 
 interface AuthContextType {
+  status: AuthStatus;
   currentUser: UserProfile | null;
+  /** Owner-only details (legal name, DOB, phone…). Null in demo mode. */
+  privateProfile: PrivateProfile | null;
+  firebaseUser: FirebaseUser | null;
+  isDemo: boolean;
   mockUsersList: UserProfile[];
+  signUp: (data: SignUpData) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  enterDemo: () => void;
   switchActiveUser: (userId: string) => void;
-  updateUsername: (
-    newUsername: string,
-    displayName?: string,
-    photo?: string
-  ) => Promise<{ success: boolean; error?: string }>;
+  isUsernameAvailable: (username: string) => Promise<boolean>;
+  updateUsername: (newUsername: string, displayName?: string, photo?: string) => Promise<{ success: boolean; error?: string }>;
   topUpBalance: (amount: number) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/**
- * Demo-persona auth (same personas as the web app). Real sign-in (Google / Apple)
- * needs a development build, so it isn't wired up while running in Expo Go.
- */
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(MOCK_USERS[0]);
+/** Turns Firebase error codes into sentences people can act on. */
+export function authErrorMessage(err: any): string {
+  const code: string = err?.code || '';
+  const map: Record<string, string> = {
+    'auth/email-already-in-use': 'An account with this email already exists. Try logging in.',
+    'auth/invalid-email': 'That email address doesn’t look right.',
+    'auth/weak-password': 'Password is too weak — use at least 8 characters.',
+    'auth/invalid-credential': 'Wrong email or password.',
+    'auth/wrong-password': 'Wrong email or password.',
+    'auth/user-not-found': 'No account with that email.',
+    'auth/too-many-requests': 'Too many attempts. Wait a minute and try again.',
+    'auth/network-request-failed': 'No connection. Check your internet and try again.',
+    'auth/operation-not-allowed': 'Email sign-in isn’t turned on in Firebase yet (Authentication → Sign-in method → Email/Password).',
+    'auth/api-key-not-valid.-please-pass-a-valid-api-key.': 'The app’s Firebase key is missing. Add it to the .env file.',
+    'auth/invalid-api-key': 'The app’s Firebase key is missing. Add it to the .env file.',
+  };
+  return map[code] || err?.message || 'Something went wrong.';
+}
 
-  // Restore the last persona you used
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [demoId, setDemoId] = useState<string | null>(null);
+  const [demoReady, setDemoReady] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [privateProfile, setPrivateProfile] = useState<PrivateProfile | null>(null);
+
+  // Restore demo mode, if that's what was used last
   useEffect(() => {
-    AsyncStorage.getItem(ACTIVE_USER_KEY)
-      .then((id) => {
-        const u = MOCK_USERS.find((m) => m.id === id);
-        if (u) setCurrentUser(u);
-      })
-      .catch(() => {});
+    AsyncStorage.getItem(DEMO_KEY)
+      .then((id) => setDemoId(id && MOCK_USERS.some((m) => m.id === id) ? id : null))
+      .catch(() => {})
+      .finally(() => setDemoReady(true));
   }, []);
 
-  // Seed demo personas into Firestore so they are searchable
+  // Firebase session
+  useEffect(
+    () =>
+      onAuthStateChanged(auth, (u) => {
+        setFirebaseUser(u);
+        setAuthReady(true);
+      }),
+    []
+  );
+
+  const isDemo = !firebaseUser && !!demoId;
+  const uid = firebaseUser?.uid || demoId;
+
+  // Live public profile (balance etc.)
+  useEffect(() => {
+    if (!uid) return;
+    return onSnapshot(
+      doc(db, 'users', uid),
+      (snap) => setProfile(snap.exists() ? ({ id: snap.id, ...snap.data() } as UserProfile) : null),
+      (err) => console.warn('Profile snapshot error:', err)
+    );
+  }, [uid]);
+
+  // Private details — only for real accounts
+  const realUid = firebaseUser?.uid;
+  useEffect(() => {
+    if (!realUid) return;
+    return onSnapshot(
+      doc(db, 'users', realUid, 'private', 'profile'),
+      (snap) => setPrivateProfile(snap.exists() ? (snap.data() as PrivateProfile) : null),
+      (err) => console.warn('Private profile error:', err)
+    );
+  }, [realUid]);
+
+  // Seed demo personas so they're searchable (and exist for demo mode)
   useEffect(() => {
     (async () => {
       try {
         for (const user of MOCK_USERS) {
           const ref = doc(db, 'users', user.id);
-          const snap = await getDoc(ref);
-          if (!snap.exists()) await setDoc(ref, user);
+          if (!(await getDoc(ref)).exists()) await setDoc(ref, user);
         }
       } catch (err) {
         console.warn('Preset users seed fallback:', err);
@@ -133,83 +216,134 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })();
   }, []);
 
-  // Live balance / profile updates
-  useEffect(() => {
-    if (!currentUser?.id) return;
-    const unsub = onSnapshot(
-      doc(db, 'users', currentUser.id),
-      (snap) => {
-        if (snap.exists()) setCurrentUser(snap.data() as UserProfile);
-      },
-      (err) => console.warn('User snapshot error:', err)
-    );
-    return () => unsub();
-  }, [currentUser?.id]);
+  const status: AuthStatus = !authReady || !demoReady ? 'loading' : firebaseUser ? 'signedIn' : demoId ? 'demo' : 'signedOut';
 
-  const switchActiveUser = (userId: string) => {
-    const target = MOCK_USERS.find((u) => u.id === userId);
-    if (target) {
-      setCurrentUser(target);
-      AsyncStorage.setItem(ACTIVE_USER_KEY, userId).catch(() => {});
+  // While a profile snapshot is loading, fall back to the demo persona / a minimal stub
+  const currentUser: UserProfile | null =
+    status === 'signedIn' || status === 'demo'
+      ? profile && profile.id === uid
+        ? profile
+        : isDemo
+          ? MOCK_USERS.find((m) => m.id === demoId) || null
+          : firebaseUser
+            ? { id: firebaseUser.uid, name: firebaseUser.displayName || 'You', balance: 0, createdAt: '' }
+            : null
+      : null;
+
+  const isUsernameAvailable = async (username: string) => {
+    const lower = username.trim().replace(/^@/, '').toLowerCase();
+    const snap = await getDocs(query(collection(db, 'users'), where('usernameLower', '==', lower), limit(1)));
+    return snap.empty || snap.docs[0].id === firebaseUser?.uid;
+  };
+
+  const signUp = async (d: SignUpData) => {
+    const username = d.username.trim().replace(/^@/, '');
+    if (!(await isUsernameAvailable(username))) {
+      throw new Error(`@${username} is already taken.`);
+    }
+    const cred = await createUserWithEmailAndPassword(auth, d.email.trim(), d.password);
+    const now = new Date().toISOString();
+    try {
+      const publicProfile: UserProfile = {
+        id: cred.user.uid,
+        name: d.displayName.trim(),
+        username,
+        usernameLower: username.toLowerCase(),
+        balance: STARTING_BALANCE,
+        isRegistered: false,
+        createdAt: now,
+      };
+      const priv: PrivateProfile = {
+        legalFirstName: d.legalFirstName.trim(),
+        legalLastName: d.legalLastName.trim(),
+        dateOfBirth: d.dateOfBirth,
+        email: d.email.trim().toLowerCase(),
+        phone: d.phone,
+        state: d.state,
+        termsAcceptedAt: now,
+        createdAt: now,
+      };
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'users', cred.user.uid), publicProfile);
+      batch.set(doc(db, 'users', cred.user.uid, 'private', 'profile'), priv);
+      await batch.commit();
+      await updateProfile(cred.user, { displayName: publicProfile.name }).catch(() => {});
+      await AsyncStorage.removeItem(DEMO_KEY).catch(() => {});
+      setDemoId(null);
+    } catch (err) {
+      // Don't leave a half-made account behind
+      await deleteUser(cred.user).catch(() => {});
+      throw err;
     }
   };
 
-  const updateUsername = async (
-    newUsername: string,
-    displayName?: string,
-    photo?: string
-  ): Promise<{ success: boolean; error?: string }> => {
-    if (!currentUser) return { success: false, error: 'Not authenticated' };
+  const signIn = async (email: string, password: string) => {
+    await signInWithEmailAndPassword(auth, email.trim(), password);
+    await AsyncStorage.removeItem(DEMO_KEY).catch(() => {});
+    setDemoId(null);
+  };
 
+  const resetPassword = (email: string) => sendPasswordResetEmail(auth, email.trim());
+
+  const signOut = async () => {
+    await AsyncStorage.removeItem(DEMO_KEY).catch(() => {});
+    setDemoId(null);
+    setProfile(null);
+    setPrivateProfile(null);
+    if (auth.currentUser) await fbSignOut(auth);
+  };
+
+  const enterDemo = () => switchActiveUser(MOCK_USERS[0].id);
+
+  const switchActiveUser = (userId: string) => {
+    if (!MOCK_USERS.some((u) => u.id === userId)) return;
+    setProfile(null);
+    setDemoId(userId);
+    AsyncStorage.setItem(DEMO_KEY, userId).catch(() => {});
+  };
+
+  const updateUsername = async (newUsername: string, displayName?: string, photo?: string): Promise<{ success: boolean; error?: string }> => {
+    if (!currentUser) return { success: false, error: 'Not signed in' };
     const clean = newUsername.trim().replace(/^@/, '');
-    const cleanLower = clean.toLowerCase();
-
-    if (!clean || clean.length < 2) {
-      return { success: false, error: 'Username must be at least 2 characters.' };
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(clean)) {
-      return { success: false, error: 'Only letters, numbers, and underscores allowed.' };
-    }
-
+    if (clean.length < 2) return { success: false, error: 'Username must be at least 2 characters.' };
+    if (!/^[a-zA-Z0-9_]+$/.test(clean)) return { success: false, error: 'Only letters, numbers, and underscores allowed.' };
     try {
-      const q = query(collection(db, 'users'), where('usernameLower', '==', cleanLower));
-      const querySnap = await getDocs(q);
-      const isTaken = querySnap.docs.some((d) => d.id !== currentUser.id);
-
-      if (isTaken) {
-        return { success: false, error: `@${clean} is already taken. Try another!` };
-      }
-
-      const userRef = doc(db, 'users', currentUser.id);
-      const updates: Partial<UserProfile> = {
-        username: clean,
-        usernameLower: cleanLower,
-        updatedAt: new Date().toISOString(),
-      };
+      const snap = await getDocs(query(collection(db, 'users'), where('usernameLower', '==', clean.toLowerCase())));
+      if (snap.docs.some((x) => x.id !== currentUser.id)) return { success: false, error: `@${clean} is already taken.` };
+      const updates: Partial<UserProfile> = { username: clean, usernameLower: clean.toLowerCase(), updatedAt: new Date().toISOString() };
       if (displayName) updates.name = displayName;
       if (photo) updates.photo = photo;
-
-      await setDoc(userRef, updates, { merge: true });
-      setCurrentUser((prev) => (prev ? { ...prev, ...updates } : null));
-
+      await setDoc(doc(db, 'users', currentUser.id), updates, { merge: true });
       return { success: true };
     } catch (err: any) {
-      console.error('Error claiming username:', err);
-      return { success: false, error: err.message || 'Failed to claim username.' };
+      return { success: false, error: err?.message || 'Failed to save username.' };
     }
   };
 
   const topUpBalance = async (amount: number) => {
     if (!currentUser) return;
-    const newBal = (currentUser.balance || 0) + amount;
-    const userRef = doc(db, 'users', currentUser.id);
-    await setDoc(userRef, { balance: newBal, updatedAt: new Date().toISOString() }, { merge: true });
-    setCurrentUser((prev) => (prev ? { ...prev, balance: newBal } : null));
+    await setDoc(doc(db, 'users', currentUser.id), { balance: (currentUser.balance || 0) + amount, updatedAt: new Date().toISOString() }, { merge: true });
   };
 
   return (
     <AuthContext.Provider
-      value={{ currentUser, mockUsersList: MOCK_USERS, switchActiveUser, updateUsername, topUpBalance }}>
+      value={{
+        status,
+        currentUser,
+        privateProfile: firebaseUser ? privateProfile : null,
+        firebaseUser,
+        isDemo,
+        mockUsersList: MOCK_USERS,
+        signUp,
+        signIn,
+        resetPassword,
+        signOut,
+        enterDemo,
+        switchActiveUser,
+        isUsernameAvailable,
+        updateUsername,
+        topUpBalance,
+      }}>
       {children}
     </AuthContext.Provider>
   );
