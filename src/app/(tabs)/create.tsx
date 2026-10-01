@@ -16,11 +16,12 @@ import { calculateOdds, createBet, extractRecentOpponents, searchRegisteredUsers
 type Person = { id: string; name: string; username?: string; photo?: string };
 type Who = 'friends' | 'anyone' | 'solo';
 
-const PRESETS = [
-  { label: 'Yes / No', sides: ['Yes', 'No'] },
-  { label: 'Over / Under', sides: ['Over', 'Under'] },
-  { label: 'Win / Lose / Draw', sides: ['Win', 'Lose', 'Draw'] },
-];
+type OptionMode = 'yesno' | 'overunder' | 'custom';
+const PRESET_SIDES: Record<Exclude<OptionMode, 'custom'>, string[]> = {
+  yesno: ['Yes', 'No'],
+  overunder: ['Over', 'Under'],
+};
+type CustomOption = { id: number; name: string };
 const letter = (i: number) => String.fromCharCode(65 + i); // A, B, C…
 
 const DEADLINES: { id: string; label: string; hours: number | null }[] = [
@@ -66,9 +67,11 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
   const { currentUser, mockUsersList, isDemo } = useAuth();
   const { bets, setDraft } = useBets();
   const [terms, setTerms] = useState(draft?.terms || '');
-  const [sides, setSides] = useState<string[]>(['Yes', 'No']);
-  const [custom, setCustom] = useState(false);
+  const [mode, setMode] = useState<OptionMode>('yesno');
+  const [customOpts, setCustomOpts] = useState<CustomOption[]>([{ id: 1, name: '' }]);
   const [pick, setPick] = useState(0); // index into sides
+  const custom = mode === 'custom';
+  const sides = custom ? customOpts.map((o) => o.name) : PRESET_SIDES[mode];
   const [stake, setStake] = useState(10);
   const [who, setWho] = useState<Who>('friends');
   const [people, setPeople] = useState<Person[]>(
@@ -129,23 +132,22 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
   };
   const removePerson = (id: string) => setPeople((p) => p.filter((x) => x.id !== id));
 
-  const choosePreset = (next: string[]) => {
-    setCustom(false);
-    setSides(next);
+  const chooseMode = (m: OptionMode) => {
+    setMode(m);
     setPick(0);
+    if (m === 'custom') setCustomOpts([{ id: Date.now(), name: '' }]);
   };
-  const startCustom = () => {
-    setCustom(true);
-    setSides(['', '']);
-    setPick(0);
+  const renameOption = (id: number, name: string) => setCustomOpts((prev) => prev.map((o) => (o.id === id ? { ...o, name } : o)));
+  // A new option is selected straight away; tap any option afterwards to choose your pick
+  const addOption = () => {
+    if (customOpts.length >= 26) return;
+    setCustomOpts((prev) => [...prev, { id: Date.now(), name: '' }]);
+    setPick(customOpts.length);
   };
-  const renameSide = (i: number, name: string) => setSides((prev) => prev.map((x, j) => (j === i ? name : x)));
-  const addSide = () => sides.length < 26 && setSides((prev) => [...prev, '']);
-  const removeSide = (i: number) => {
-    if (sides.length <= 2) return;
-    setSides((prev) => prev.filter((_, j) => j !== i));
-    if (pick === i) setPick(0);
-    else if (pick > i) setPick(pick - 1);
+  const removeOption = (i: number) => {
+    if (customOpts.length <= 1) return;
+    setCustomOpts((prev) => prev.filter((_, j) => j !== i));
+    if (pick >= i && pick > 0) setPick(pick - 1);
   };
 
   const shareInvite = () => {
@@ -157,7 +159,8 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
     if (!currentUser) return;
     setError('');
     if (!terms.trim()) return setError('Say what the bet is.');
-    const finalSides = sides.map((x, i) => x.trim() || (custom ? '' : letter(i)));
+    const finalSides = sides.map((x) => x.trim());
+    if (finalSides.length < 2) return setError('Add at least two options.');
     if (finalSides.some((x) => !x)) return setError('Give every option a name, or remove the empty ones.');
     if (new Set(finalSides.map((x) => x.toLowerCase())).size !== finalSides.length) return setError('Two options have the same name.');
     const mySide = finalSides[pick];
@@ -301,64 +304,76 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
 
       {/* 3. Options + your pick */}
       <Section n={3} title="Your pick">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 16 }} style={{ marginRight: -16 }}>
-          {PRESETS.map((p) => (
-            <Chip key={p.label} label={p.label} selected={!custom && p.sides.join() === sides.join()} onPress={() => choosePreset(p.sides)} />
-          ))}
-          <Chip label="Custom" icon="create-outline" selected={custom} onPress={startCustom} />
-        </ScrollView>
-        {custom ? <T v="tiny">Name each option — e.g. candidates in an election — then tap the one you’re backing.</T> : null}
+        <Segmented<OptionMode>
+          value={mode}
+          onChange={chooseMode}
+          items={[
+            { id: 'yesno', label: 'Yes / No' },
+            { id: 'overunder', label: 'Over / Under' },
+            { id: 'custom', label: 'Custom' },
+          ]}
+        />
+        {custom ? <T v="tiny">Type each option (e.g. candidates in an election), then tap the one you’re backing.</T> : null}
         <View style={{ gap: 8 }}>
-          {sides.map((side, i) => {
-            const mine = i === pick;
-            const others = opponents.filter((_, k) => otherIndex(k) === i);
-            return (
-              <Pressable
-                key={custom ? `c${i}` : side}
-                onPress={() => {
-                  tap();
-                  setPick(i);
-                }}
-                style={[s.option, mine && s.optionOn, custom && { paddingVertical: 4 }]}>
-                <Ionicons name={mine ? 'radio-button-on' : 'radio-button-off'} size={22} color={mine ? '#fff' : C.faint} />
-                {custom ? (
-                  <TextInput
-                    value={side}
-                    onChangeText={(t) => renameSide(i, t)}
-                    placeholder={`Option ${letter(i)}`}
-                    placeholderTextColor={mine ? '#A3A3A3' : C.faint}
-                    returnKeyType="done"
-                    style={{ flex: 1, fontSize: 16, fontWeight: '700', color: mine ? '#fff' : C.ink, paddingVertical: 10 }}
-                  />
-                ) : (
-                  <T v="bodyBold" style={{ flex: 1, color: mine ? '#fff' : C.ink }} numberOfLines={1}>
-                    {side}
-                  </T>
-                )}
-                {mine ? <T v="tiny" style={{ color: '#A7F3D0', fontWeight: '700' }}>You</T> : null}
-                {others.length ? (
-                  <T v="tiny" style={{ color: mine ? '#D4D4D4' : C.muted }}>
-                    {others.map((o) => o.name.split(' ')[0]).join(', ')}
-                  </T>
-                ) : null}
-                {custom && sides.length > 2 ? (
-                  <Pressable hitSlop={10} onPress={() => removeSide(i)}>
-                    <Ionicons name="close" size={18} color={mine ? '#D4D4D4' : C.faint} />
+          {custom
+            ? customOpts.map((o, i) => {
+                const mine = i === pick;
+                return (
+                  <Pressable key={o.id} onPress={() => setPick(i)} style={[s.option, mine && s.optionOn, { paddingVertical: 2 }]}>
+                    <Ionicons name={mine ? 'radio-button-on' : 'radio-button-off'} size={22} color={mine ? '#fff' : C.faint} />
+                    <TextInput
+                      value={o.name}
+                      onChangeText={(t) => renameOption(o.id, t)}
+                      onFocus={() => setPick(i)}
+                      autoFocus={i === customOpts.length - 1}
+                      placeholder={`Option ${letter(i)}`}
+                      placeholderTextColor={mine ? '#8A8A8A' : C.faint}
+                      returnKeyType="done"
+                      style={{ flex: 1, fontSize: 16, fontWeight: '700', color: mine ? '#fff' : C.ink, paddingVertical: 12 }}
+                    />
+                    {mine ? <T v="tiny" style={{ color: '#A7F3D0', fontWeight: '700' }}>You</T> : null}
+                    {customOpts.length > 1 ? (
+                      <Pressable hitSlop={10} onPress={() => removeOption(i)}>
+                        <Ionicons name="close" size={18} color={mine ? '#D4D4D4' : C.faint} />
+                      </Pressable>
+                    ) : null}
                   </Pressable>
-                ) : null}
-              </Pressable>
-            );
-          })}
-          {custom && sides.length < 26 ? (
-            <Pressable onPress={addSide} style={s.addOption}>
+                );
+              })
+            : sides.map((side, i) => {
+                const mine = i === pick;
+                const others = opponents.filter((_, k) => otherIndex(k) === i);
+                return (
+                  <Pressable
+                    key={side}
+                    onPress={() => {
+                      tap();
+                      setPick(i);
+                    }}
+                    style={[s.option, mine && s.optionOn]}>
+                    <Ionicons name={mine ? 'radio-button-on' : 'radio-button-off'} size={22} color={mine ? '#fff' : C.faint} />
+                    <T v="bodyBold" style={{ flex: 1, color: mine ? '#fff' : C.ink }}>
+                      {side}
+                    </T>
+                    {mine ? <T v="tiny" style={{ color: '#A7F3D0', fontWeight: '700' }}>Your pick</T> : null}
+                    {others.length ? (
+                      <T v="tiny" style={{ color: mine ? '#D4D4D4' : C.muted }}>
+                        {others.map((x) => x.name.split(' ')[0]).join(', ')}
+                      </T>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+          {custom && customOpts.length < 26 ? (
+            <Pressable onPress={addOption} style={s.addOption}>
               <Ionicons name="add" size={18} color={C.muted} />
               <T v="small" style={{ fontWeight: '600' }}>
-                Add option {letter(sides.length)}
+                Add option {letter(customOpts.length)}
               </T>
             </Pressable>
           ) : null}
         </View>
-        {opponents.length ? <T v="tiny">Friends can switch to a different option when they accept.</T> : null}
+        {opponents.length ? <T v="tiny">Friends get a different option by default and can switch when they accept.</T> : null}
       </Section>
 
       {/* 4. Stake */}
