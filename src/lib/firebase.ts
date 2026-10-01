@@ -4,9 +4,11 @@ import * as FirebaseAuth from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { Platform } from 'react-native';
 
-// Same Firebase project as the Styx web app, so both apps share bets, users and the ledger.
+// Firebase web config. These values are not secrets: Firebase web keys are meant to ship
+// inside apps, and access is controlled by Firestore rules (firestore.rules).
+// Any EXPO_PUBLIC_FIREBASE_* variable in a .env file overrides the default here.
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'demo-api-key',
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyAoSen9sUomfsnEBK8k512VKWV-R87VecY',
   authDomain:
     process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ||
     'gen-lang-client-0873594168.firebaseapp.com',
@@ -38,8 +40,8 @@ function createAuth(): FirebaseAuth.Auth {
 }
 export const auth = createAuth();
 
-/** True until a real Firebase web config is filled in (see .env.example). */
-export const FIREBASE_CONFIG_MISSING = firebaseConfig.apiKey === 'demo-api-key';
+/** True if no Firebase web config is set. */
+export const FIREBASE_CONFIG_MISSING = !firebaseConfig.apiKey;
 
 /** Public web URL used in invite links you send to friends. */
 export const PUBLIC_WEB_URL =
