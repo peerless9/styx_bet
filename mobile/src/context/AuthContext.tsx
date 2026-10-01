@@ -222,7 +222,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const currentUser: UserProfile | null =
     status === 'signedIn' || status === 'demo'
       ? profile && profile.id === uid
-        ? profile
+        ? { ...profile, name: profile.name || firebaseUser?.displayName || profile.username || 'Player' }
         : isDemo
           ? MOCK_USERS.find((m) => m.id === demoId) || null
           : firebaseUser

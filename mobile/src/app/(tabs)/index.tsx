@@ -1,15 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { BetCard } from '@/components/BetCard';
 import { TopBar } from '@/components/TopBar';
-import { Banner, Button, Chip, Empty, Row, Screen, T, tap } from '@/components/ui';
+import { Banner, Button, Chip, Empty, Row, Screen, T } from '@/components/ui';
 import { C } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useBets } from '@/context/BetsContext';
-import { WEEKLY_HOT_TOPICS } from '@/services/betService';
 
 type Filter = 'all' | 'open' | 'pending' | 'locked' | 'settled';
 
@@ -66,40 +65,6 @@ export default function BetsFeed() {
       </View>
       <Button title="Post New Bet" icon="add" onPress={() => newBet()} />
 
-      {/* Hot topics */}
-      <View style={{ gap: 10 }}>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <Row gap={6}>
-            <Ionicons name="flame" size={16} color={C.green} />
-            <T v="bodyBold">Hot Topics This Week</T>
-          </Row>
-          <T v="tiny" style={{ color: C.green, fontWeight: '700' }}>
-            Recommended
-          </T>
-        </Row>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 16 }} style={{ marginRight: -16 }}>
-          {WEEKLY_HOT_TOPICS.map((t, i) => (
-            <Pressable
-              key={t.code}
-              onPress={() => {
-                tap();
-                newBet({ topicIndex: i });
-              }}
-              style={({ pressed }) => [s.topic, pressed && { opacity: 0.8 }]}>
-              <T v="tiny" style={{ fontFamily: 'Menlo', color: C.faint }}>
-                {t.code}
-              </T>
-              <T v="bodyBold" numberOfLines={2}>
-                {t.topic}
-              </T>
-              <T v="tiny" style={{ color: C.greenDark, fontWeight: '700' }}>
-                ${t.suggestedStake} stake
-              </T>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-
       {/* Search + filters */}
       <View style={s.search}>
         <Ionicons name="search" size={17} color={C.faint} />
@@ -154,15 +119,6 @@ export default function BetsFeed() {
 }
 
 const s = StyleSheet.create({
-  topic: {
-    width: 170,
-    gap: 6,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.line,
-  },
   search: {
     flexDirection: 'row',
     alignItems: 'center',

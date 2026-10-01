@@ -3,7 +3,8 @@ import { format, isPast, parseISO } from 'date-fns';
 import { router, useLocalSearchParams } from 'expo-router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 
 import { EvidenceComposer, EvidenceList, useEvidence } from '@/components/Evidence';
 import { SignaturePad } from '@/components/SignaturePad';
@@ -28,11 +29,13 @@ import { C, money } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useBets } from '@/context/BetsContext';
 import { db } from '@/lib/firebase';
+import { betLink } from '@/lib/links';
 import type { Bet } from '@/lib/types';
 import {
   cancelBet,
   confirmParticipantBet,
-  joinOpenBet,
+  joinBetViaLink,
+  linkJoinProblem,
   canDecide,
   requestStaffReview,
   staffDecide,
@@ -75,7 +78,6 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
   const { setDraft } = useBets();
   const me = bet.participants.find((p) => p.userId === currentUser?.id);
   const isCreator = currentUser?.id === bet.creatorId;
-  const isOpen = bet.betType === 'open';
   const deadline = bet.deadline ? parseISO(bet.deadline) : null;
   const method = bet.resolution || 'players';
   const evidence = useEvidence(bet.id);
@@ -90,10 +92,18 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
   const active = bet.status === 'locked' || bet.status === 'settling';
   const [staffSide, setStaffSide] = useState<string | null>(null);
   const [staffNote, setStaffNote] = useState('');
-  const needsSignature = !me || (bet.status === 'pending' && !me.confirmed);
-  const canJoin = needsSignature && (me || (isOpen && bet.status !== 'settled' && bet.status !== 'cancelled'));
+  // Invited (listed) players accept; anyone else who opens the link can join
+  const canAccept = !!me && bet.status === 'pending' && !me.confirmed;
+  const canJoin = canAccept || (!me && !linkJoinProblem(bet, currentUser, now));
+  const canInvite =
+    !!me &&
+    bet.betType !== 'personal' &&
+    (bet.status === 'pending' || bet.status === 'locked') &&
+    (!bet.deadline || new Date(bet.deadline).getTime() > now);
+  const creatorSide = bet.participants.find((p) => p.userId === bet.creatorId)?.side;
+  const [copied, setCopied] = useState(false);
 
-  const [side, setSide] = useState(me?.side || bet.sides[0]);
+  const [side, setSide] = useState(me?.side || bet.sides.find((x) => x !== creatorSide) || bet.sides[0]);
   const [stake, setStake] = useState(me?.stake || bet.participants[0]?.stake || 10);
   const [signature, setSignature] = useState(currentUser?.signature || '');
   const [agreed, setAgreed] = useState(false);
@@ -118,7 +128,7 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
     if (!currentUser) return;
     if (!signature) return setError('Sign the contract first.');
     if (!agreed) return setError('Tick the agreement box to continue.');
-    act('sign', () => (isOpen && !me ? joinOpenBet(bet, currentUser, side, stake) : confirmParticipantBet(bet, currentUser, side, stake)));
+    act('sign', () => (me ? confirmParticipantBet(bet, currentUser, side, stake) : joinBetViaLink(bet, currentUser, side, stake)));
   };
 
   const confirmCancel = () =>
@@ -176,11 +186,54 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
 
       {error ? <Banner text={error} /> : null}
 
-      {/* Sign & lock */}
-      {canJoin ? (
+      {/* Invite with a link */}
+      {canInvite ? (
         <Card>
+          <Row gap={8}>
+            <Ionicons name="link" size={18} color={C.ink} />
+            <T v="bodyBold">Invite people</T>
+          </Row>
+          <T v="small">Send this link to anyone. It opens Styx right to this bet so they can accept.</T>
+          <Row>
+            <Button
+              small
+              kind="secondary"
+              icon={copied ? 'checkmark' : 'copy-outline'}
+              title={copied ? 'Copied' : 'Copy link'}
+              style={{ flex: 1 }}
+              onPress={async () => {
+                await Clipboard.setStringAsync(betLink(bet.id));
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            />
+            <Button
+              small
+              icon="share-outline"
+              title="Send"
+              style={{ flex: 1 }}
+              onPress={() => {
+                const url = betLink(bet.id);
+                Share.share({ message: `${currentUser?.name || 'A friend'} bet you on Styx: “${bet.terms}” — ${url}`, url }).catch(() => {});
+              }}
+            />
+          </Row>
+        </Card>
+      ) : null}
+
+      {/* Accept / join */}
+      {canJoin ? (
+        <Card highlight={!me || canAccept}>
+          {!me ? (
+            <Row>
+              <Avatar name={bet.creatorName} photo={bet.creatorPhoto} size={32} dark />
+              <T v="bodyBold" style={{ flex: 1 }}>
+                {bet.creatorName} invited you to this bet
+              </T>
+            </Row>
+          ) : null}
           <Row style={{ justifyContent: 'space-between' }}>
-            <T v="bodyBold">Agreement & signature</T>
+            <T v="bodyBold">Accept the bet</T>
             <Pill label="18+ verified" tone="green" icon="shield-checkmark" />
           </Row>
           <T v="small">Pick your side and stake, then sign. The contract is recorded on the public ledger.</T>
@@ -191,7 +244,7 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
           <MoneyField label="Stake" value={stake} onChange={setStake} />
           <SignaturePad value={signature} onChange={setSignature} onDrawingChange={setDrawing} />
           <Check checked={agreed} onToggle={() => setAgreed(!agreed)} label="I agree to the terms and to storing my digital signature on the public ledger." />
-          <Button title={`Sign & lock ${money(stake)}`} icon="lock-closed" loading={busy === 'sign'} disabled={!agreed} onPress={signAndLock} />
+          <Button title={`Accept & lock ${money(stake)}`} icon="lock-closed" loading={busy === 'sign'} disabled={!agreed} onPress={signAndLock} />
         </Card>
       ) : null}
 

@@ -11,7 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useBets, type BetDraft } from '@/context/BetsContext';
 import { PUBLIC_WEB_URL } from '@/lib/firebase';
 import type { BetType, ResolutionMethod, UserProfile } from '@/lib/types';
-import { WEEKLY_HOT_TOPICS, calculateOdds, createBet, extractRecentOpponents, searchRegisteredUsers } from '@/services/betService';
+import { calculateOdds, createBet, extractRecentOpponents, searchRegisteredUsers } from '@/services/betService';
 
 type Person = { id: string; name: string; username?: string; photo?: string };
 type Who = 'friends' | 'anyone' | 'solo';
@@ -21,6 +21,7 @@ const PRESETS = [
   { label: 'Over / Under', sides: ['Over', 'Under'] },
   { label: 'Win / Lose / Draw', sides: ['Win', 'Lose', 'Draw'] },
 ];
+const letter = (i: number) => String.fromCharCode(65 + i); // A, B, C…
 
 const DEADLINES: { id: string; label: string; hours: number | null }[] = [
   { id: 'none', label: 'No deadline', hours: null },
@@ -64,14 +65,11 @@ function Section({ n, title, children, right }: { n: number; title: string; chil
 function CreateForm({ draft }: { draft: BetDraft | null }) {
   const { currentUser, mockUsersList, isDemo } = useAuth();
   const { bets, setDraft } = useBets();
-  const tpl = draft?.topicIndex !== undefined ? WEEKLY_HOT_TOPICS[draft.topicIndex] : undefined;
-
-  const [terms, setTerms] = useState(tpl?.terms || draft?.terms || '');
-  const [sides, setSides] = useState<string[]>(tpl?.sides || ['Yes', 'No']);
-  const [mySide, setMySide] = useState((tpl?.sides || ['Yes'])[0]);
-  const [newSide, setNewSide] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [stake, setStake] = useState(tpl?.suggestedStake || 10);
+  const [terms, setTerms] = useState(draft?.terms || '');
+  const [sides, setSides] = useState<string[]>(['Yes', 'No']);
+  const [custom, setCustom] = useState(false);
+  const [pick, setPick] = useState(0); // index into sides
+  const [stake, setStake] = useState(10);
   const [who, setWho] = useState<Who>('friends');
   const [people, setPeople] = useState<Person[]>(
     () =>
@@ -116,10 +114,10 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
   const opponents = who === 'friends' ? people : [];
   const players = 1 + opponents.length;
   const pot = stake * players;
-  // Friends are put on a different side than you by default; they can switch when they accept
-  const otherSide = (i: number) => {
-    const others = sides.filter((x) => x !== mySide);
-    return others[i % others.length] || sides[0];
+  // Friends are put on a different option than you by default; they can switch when they accept
+  const otherIndex = (i: number) => {
+    const others = sides.map((_, j) => j).filter((j) => j !== pick);
+    return others[i % others.length] ?? 0;
   };
 
   const addPerson = (u: UserProfile | Person) => {
@@ -131,32 +129,23 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
   };
   const removePerson = (id: string) => setPeople((p) => p.filter((x) => x.id !== id));
 
-  const applyTopic = (i: number) => {
-    const t = WEEKLY_HOT_TOPICS[i];
-    tap();
-    setTerms(t.terms);
-    setSides(t.sides);
-    setMySide(t.sides[0]);
-    setStake(t.suggestedStake);
-  };
-  const applySides = (next: string[]) => {
+  const choosePreset = (next: string[]) => {
+    setCustom(false);
     setSides(next);
-    setMySide(next[0]);
+    setPick(0);
   };
-  const addSide = () => {
-    const name = newSide.trim();
-    setAdding(false);
-    setNewSide('');
-    if (!name) return;
-    if (sides.some((x) => x.toLowerCase() === name.toLowerCase())) return setError(`"${name}" is already an option.`);
-    setSides([...sides, name]);
-    setError('');
+  const startCustom = () => {
+    setCustom(true);
+    setSides(['', '']);
+    setPick(0);
   };
-  const removeSide = (side: string) => {
+  const renameSide = (i: number, name: string) => setSides((prev) => prev.map((x, j) => (j === i ? name : x)));
+  const addSide = () => sides.length < 26 && setSides((prev) => [...prev, '']);
+  const removeSide = (i: number) => {
     if (sides.length <= 2) return;
-    const next = sides.filter((x) => x !== side);
-    setSides(next);
-    if (mySide === side) setMySide(next[0]);
+    setSides((prev) => prev.filter((_, j) => j !== i));
+    if (pick === i) setPick(0);
+    else if (pick > i) setPick(pick - 1);
   };
 
   const shareInvite = () => {
@@ -168,13 +157,17 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
     if (!currentUser) return;
     setError('');
     if (!terms.trim()) return setError('Say what the bet is.');
+    const finalSides = sides.map((x, i) => x.trim() || (custom ? '' : letter(i)));
+    if (finalSides.some((x) => !x)) return setError('Give every option a name, or remove the empty ones.');
+    if (new Set(finalSides.map((x) => x.toLowerCase())).size !== finalSides.length) return setError('Two options have the same name.');
+    const mySide = finalSides[pick];
     if (who === 'friends' && people.length === 0) return setError('Add at least one friend — or choose “Anyone” or “Just me”.');
     if (stake <= 0) return setError('Enter a stake.');
     if ((currentUser.balance || 0) < stake) return setError(`Not enough balance — you have ${money(currentUser.balance)}.`);
 
-    const stakesMap: Record<string, number> = Object.fromEntries(sides.map((x) => [x, 0]));
+    const stakesMap: Record<string, number> = Object.fromEntries(finalSides.map((x) => [x, 0]));
     stakesMap[mySide] += stake;
-    opponents.forEach((_, i) => (stakesMap[otherSide(i)] += stake));
+    opponents.forEach((_, i) => (stakesMap[finalSides[otherIndex(i)]] += stake));
     const betType: BetType = who === 'anyone' ? 'open' : who === 'solo' ? 'personal' : opponents.length === 1 ? '1-on-1' : 'group';
 
     try {
@@ -184,10 +177,10 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
         terms: terms.trim(),
         stanceCategory: 'binary',
         betType,
-        sides,
+        sides: finalSides,
         creatorSide: mySide,
         creatorStake: stake,
-        opponents: opponents.map((p, i) => ({ user: p, side: otherSide(i), stake })),
+        opponents: opponents.map((p, i) => ({ user: p, side: finalSides[otherIndex(i)], stake })),
         betOnYourself: who === 'solo',
         odds: calculateOdds(stakesMap, pot),
         totalPot: pot,
@@ -221,17 +214,6 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
           placeholderTextColor={C.faint}
           style={s.terms}
         />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 16 }} style={{ marginRight: -16 }}>
-          <Row gap={4} style={{ paddingRight: 4 }}>
-            <Ionicons name="flame" size={14} color={C.green} />
-            <T v="tiny" style={{ fontWeight: '700' }}>
-              Ideas
-            </T>
-          </Row>
-          {WEEKLY_HOT_TOPICS.map((t, i) => (
-            <Chip key={t.code} label={t.topic} onPress={() => applyTopic(i)} />
-          ))}
-        </ScrollView>
       </Section>
 
       {/* 2. Who */}
@@ -317,68 +299,66 @@ function CreateForm({ draft }: { draft: BetDraft | null }) {
         )}
       </Section>
 
-      {/* 3. Positions */}
+      {/* 3. Options + your pick */}
       <Section n={3} title="Your pick">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 16 }} style={{ marginRight: -16 }}>
           {PRESETS.map((p) => (
-            <Chip key={p.label} label={p.label} selected={p.sides.join() === sides.join()} onPress={() => applySides(p.sides)} />
+            <Chip key={p.label} label={p.label} selected={!custom && p.sides.join() === sides.join()} onPress={() => choosePreset(p.sides)} />
           ))}
+          <Chip label="Custom" icon="create-outline" selected={custom} onPress={startCustom} />
         </ScrollView>
+        {custom ? <T v="tiny">Name each option — e.g. candidates in an election — then tap the one you’re backing.</T> : null}
         <View style={{ gap: 8 }}>
-          {sides.map((side) => {
-            const mine = side === mySide;
-            const others = opponents.filter((_, i) => otherSide(i) === side);
+          {sides.map((side, i) => {
+            const mine = i === pick;
+            const others = opponents.filter((_, k) => otherIndex(k) === i);
             return (
               <Pressable
-                key={side}
+                key={custom ? `c${i}` : side}
                 onPress={() => {
                   tap();
-                  setMySide(side);
+                  setPick(i);
                 }}
-                style={[s.option, mine && s.optionOn]}>
+                style={[s.option, mine && s.optionOn, custom && { paddingVertical: 4 }]}>
                 <Ionicons name={mine ? 'radio-button-on' : 'radio-button-off'} size={22} color={mine ? '#fff' : C.faint} />
-                <T v="bodyBold" style={{ flex: 1, color: mine ? '#fff' : C.ink }} numberOfLines={1}>
-                  {side}
-                </T>
+                {custom ? (
+                  <TextInput
+                    value={side}
+                    onChangeText={(t) => renameSide(i, t)}
+                    placeholder={`Option ${letter(i)}`}
+                    placeholderTextColor={mine ? '#A3A3A3' : C.faint}
+                    returnKeyType="done"
+                    style={{ flex: 1, fontSize: 16, fontWeight: '700', color: mine ? '#fff' : C.ink, paddingVertical: 10 }}
+                  />
+                ) : (
+                  <T v="bodyBold" style={{ flex: 1, color: mine ? '#fff' : C.ink }} numberOfLines={1}>
+                    {side}
+                  </T>
+                )}
                 {mine ? <T v="tiny" style={{ color: '#A7F3D0', fontWeight: '700' }}>You</T> : null}
                 {others.length ? (
                   <T v="tiny" style={{ color: mine ? '#D4D4D4' : C.muted }}>
                     {others.map((o) => o.name.split(' ')[0]).join(', ')}
                   </T>
                 ) : null}
-                {sides.length > 2 ? (
-                  <Pressable hitSlop={10} onPress={() => removeSide(side)}>
+                {custom && sides.length > 2 ? (
+                  <Pressable hitSlop={10} onPress={() => removeSide(i)}>
                     <Ionicons name="close" size={18} color={mine ? '#D4D4D4' : C.faint} />
                   </Pressable>
                 ) : null}
               </Pressable>
             );
           })}
-          {adding ? (
-            <View style={[s.option, { paddingVertical: 4 }]}>
-              <Ionicons name="add" size={22} color={C.faint} />
-              <TextInput
-                value={newSide}
-                onChangeText={setNewSide}
-                onSubmitEditing={addSide}
-                onBlur={addSide}
-                autoFocus
-                returnKeyType="done"
-                placeholder="New option"
-                placeholderTextColor={C.faint}
-                style={{ flex: 1, fontSize: 16, color: C.ink, paddingVertical: 10 }}
-              />
-            </View>
-          ) : (
-            <Pressable onPress={() => setAdding(true)} style={s.addOption}>
+          {custom && sides.length < 26 ? (
+            <Pressable onPress={addSide} style={s.addOption}>
               <Ionicons name="add" size={18} color={C.muted} />
               <T v="small" style={{ fontWeight: '600' }}>
-                Add an option
+                Add option {letter(sides.length)}
               </T>
             </Pressable>
-          )}
+          ) : null}
         </View>
-        {opponents.length ? <T v="tiny">Friends can switch sides when they accept.</T> : null}
+        {opponents.length ? <T v="tiny">Friends can switch to a different option when they accept.</T> : null}
       </Section>
 
       {/* 4. Stake */}
