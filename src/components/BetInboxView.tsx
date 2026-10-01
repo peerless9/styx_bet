@@ -62,7 +62,8 @@ export const BetInboxView: React.FC<BetInboxViewProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const formatCountdown = (deadlineStr: string) => {
+  const formatCountdown = (deadlineStr?: string | null) => {
+    if (!deadlineStr) return 'No deadline';
     const deadline = new Date(deadlineStr).getTime();
     const diff = deadline - now;
     if (diff <= 0) return '00:00:00 (In Settlement)';

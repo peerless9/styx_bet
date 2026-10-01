@@ -6,6 +6,7 @@ export type BetStatus =
   | 'settling'
   | 'settled'
   | 'disputed'
+  | 'in_review'
   | 'charity'
   | 'system_forfeited'
   | 'cancelled';
@@ -45,7 +46,7 @@ export interface BetRuling {
   reasoning: string;
   confidence?: number;
   judgedAt: string;
-  judgedBy: 'consensus' | 'arbitration' | 'appeal';
+  judgedBy: 'consensus' | 'arbitration' | 'appeal' | 'staff';
 }
 
 export interface Bet {
@@ -63,7 +64,10 @@ export interface Bet {
   odds: Record<string, number>;
   totalPot: number;
   payoutRule: PayoutRule;
-  deadline: string;
+  /** ISO date, or null/missing for bets with no deadline (iPhone app) */
+  deadline?: string | null;
+  /** how the winner is decided (set by the iPhone app); missing = players */
+  resolution?: 'players' | 'review';
   status: BetStatus;
   vaultKey?: string;
   proof?: BetProof;

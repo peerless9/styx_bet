@@ -59,8 +59,8 @@ export const BetDetailModal: React.FC<BetDetailModalProps> = ({
   const isMember = !!currentParticipant;
   const isOpenBet = bet.betType === 'open';
 
-  const deadlineDate = parseISO(bet.deadline);
-  const hasDeadlinePassed = isPast(deadlineDate);
+  const deadlineDate = bet.deadline ? parseISO(bet.deadline) : null;
+  const hasDeadlinePassed = deadlineDate ? isPast(deadlineDate) : true;
 
   // Canvas drawing
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -228,7 +228,7 @@ export const BetDetailModal: React.FC<BetDetailModalProps> = ({
               <span>Pot: <strong className="text-neutral-900 text-sm">${bet.totalPot.toFixed(2)}</strong></span>
               <span className="flex items-center gap-1 text-neutral-500">
                 <Clock className="w-3.5 h-3.5" />
-                {format(deadlineDate, 'MMM d, yyyy · h:mm a')}
+                {deadlineDate ? format(deadlineDate, 'MMM d, yyyy · h:mm a') : 'No deadline'}
               </span>
             </div>
           </div>
