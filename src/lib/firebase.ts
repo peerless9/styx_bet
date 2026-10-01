@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import * as FirebaseAuth from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, type Firestore } from 'firebase/firestore';
 import { Platform } from 'react-native';
 
 // Firebase web config. These values are not secrets: Firebase web keys are meant to ship
@@ -22,7 +22,16 @@ const firebaseConfig = {
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// ignoreUndefinedProperties: optional fields that aren't set (e.g. no profile photo) are
+// simply left out instead of making the whole write fail.
+function createDb(): Firestore {
+  try {
+    return initializeFirestore(app, { ignoreUndefinedProperties: true });
+  } catch {
+    return getFirestore(app); // already initialized (fast refresh)
+  }
+}
+export const db = createDb();
 
 // Keep people signed in between app launches. getReactNativePersistence only exists in
 // Firebase's React Native build (which Metro picks on iOS), so it's looked up at runtime.

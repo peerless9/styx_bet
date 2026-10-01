@@ -782,3 +782,70 @@ export async function staffDecide(bet: Bet, staff: UserProfile, winningSide: str
     staff.name
   );
 }
+
+/* ---------- Joining from an invite link ---------- */
+
+/** Can this user join the bet from a shared link? Returns null if yes, otherwise the reason. */
+export function linkJoinProblem(bet: Bet, user: UserProfile | null, now = Date.now()): string | null {
+  if (!user) return 'Log in to join.';
+  if (bet.participants.some((p) => p.userId === user.id)) return 'You’re already in this bet.';
+  if (bet.betType === 'personal') return 'This is a personal bet.';
+  if (bet.status !== 'pending' && bet.status !== 'locked') return 'This bet is no longer open.';
+  if (bet.deadline && new Date(bet.deadline).getTime() <= now) return 'The deadline has passed.';
+  return null;
+}
+
+/** Join a bet you were sent a link to (or an open bet): stake goes into escrow right away. */
+export async function joinBetViaLink(bet: Bet, user: UserProfile, side: string, stake: number): Promise<void> {
+  const problem = linkJoinProblem(bet, user);
+  if (problem) throw new Error(problem);
+  if (!bet.sides.includes(side)) throw new Error('Pick one of the options.');
+  if (stake <= 0) throw new Error('Enter a stake.');
+  if ((user.balance || 0) < stake) {
+    throw new Error(`Not enough balance ($${(user.balance || 0).toFixed(2)} available, $${stake.toFixed(2)} needed).`);
+  }
+
+  const now = new Date().toISOString();
+  const participants: Participant[] = [
+    ...bet.participants,
+    {
+      userId: user.id,
+      name: user.name,
+      username: user.username,
+      photo: user.photo,
+      stake,
+      side,
+      confirmed: true,
+      status: 'accepted',
+      termsAgreedAt: now,
+      confirmedAt: now,
+      signature: user.signature || 'JOINED_VIA_LINK',
+    },
+  ];
+  const totalPot = bet.totalPot + stake;
+  const stakesMap: Record<string, number> = Object.fromEntries(bet.sides.map((s) => [s, 0]));
+  participants.forEach((p) => (stakesMap[p.side] = (stakesMap[p.side] || 0) + (p.stake || 0)));
+  const allIn = participants.every((p) => p.status === 'accepted' || p.confirmed);
+
+  await updateDoc(doc(db, 'bets', bet.id), {
+    participants,
+    participantIds: [...(bet.participantIds || []), user.id],
+    totalPot,
+    odds: calculateOdds(stakesMap, totalPot),
+    status: bet.status === 'locked' || allIn ? 'locked' : 'pending',
+  });
+  await updateDoc(doc(db, 'users', user.id), {
+    balance: Math.max(0, (user.balance || 0) - stake),
+    updatedAt: now,
+  });
+  await logTransaction({
+    userId: user.id,
+    userName: user.name,
+    betId: bet.id,
+    betTerms: bet.terms,
+    amount: stake,
+    type: 'hold',
+    signature: user.signature,
+    note: `Joined bet via invite link on: ${side}`,
+  });
+}

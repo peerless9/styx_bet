@@ -1,12 +1,14 @@
-import { DefaultTheme, ThemeProvider, Stack } from 'expo-router';
+import * as Linking from 'expo-linking';
+import { DefaultTheme, ThemeProvider, Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { C } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { BetsProvider } from '@/context/BetsContext';
+import { betIdFromUrl } from '@/lib/links';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -22,6 +24,21 @@ function RootStack() {
   useEffect(() => {
     if (status !== 'loading') SplashScreen.hideAsync().catch(() => {});
   }, [status]);
+
+  // Opened a bet link while logged out? Remember it and open the bet after login/sign-up.
+  const url = Linking.useURL();
+  const pendingBet = useRef<string | null>(null);
+  useEffect(() => {
+    const id = betIdFromUrl(url);
+    if (id && !inApp) pendingBet.current = id;
+  }, [url, inApp]);
+  useEffect(() => {
+    if (inApp && pendingBet.current) {
+      const id = pendingBet.current;
+      pendingBet.current = null;
+      setTimeout(() => router.push(`/bet/${id}`), 300);
+    }
+  }, [inApp]);
 
   if (status === 'loading') return null; // splash screen stays up
 
