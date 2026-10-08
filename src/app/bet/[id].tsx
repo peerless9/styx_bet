@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
-import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 
 import { EvidenceComposer, EvidenceList, useEvidence } from '@/components/Evidence';
 import { SignaturePad } from '@/components/SignaturePad';
@@ -14,6 +14,7 @@ import {
   Button,
   Card,
   Check,
+  confirmAction,
   ChoiceRow,
   Divider,
   IconButton,
@@ -132,10 +133,7 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
   };
 
   const confirmCancel = () =>
-    Alert.alert('Cancel this bet?', 'Everyone’s escrowed stake is refunded immediately.', [
-      { text: 'Keep it', style: 'cancel' },
-      { text: 'Cancel bet', style: 'destructive', onPress: () => act('cancel', () => cancelBet(bet)) },
-    ]);
+confirmAction('Cancel this bet?', 'Everyone’s escrowed stake is refunded immediately.', 'Cancel bet', () => act('cancel', () => cancelBet(bet)), true);
 
   const rematch = () => {
     setDraft({
@@ -379,10 +377,9 @@ function BetDetailBody({ bet, onClose }: { bet: Bet; onClose: () => void }) {
             disabled={!staffSide}
             loading={busy === 'staff'}
             onPress={() =>
-              Alert.alert('Confirm decision', `“${staffSide}” wins and the pot is paid out. This can’t be undone.`, [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Confirm', onPress: () => staffSide && act('staff', () => staffDecide(bet, currentUser, staffSide, staffNote)) },
-              ])
+              confirmAction('Confirm decision', `“${staffSide}” wins and the pot is paid out. This can’t be undone.`, 'Confirm', () => {
+                if (staffSide) act('staff', () => staffDecide(bet, currentUser, staffSide, staffNote));
+              })
             }
           />
         </Card>

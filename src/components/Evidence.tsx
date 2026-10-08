@@ -65,6 +65,8 @@ export function EvidenceComposer({ bet, user, cta = 'Submit for review' }: { bet
         if (i === 1) pick('camera');
         if (i === 2) pick('library');
       });
+    } else if (Platform.OS === 'web') {
+      pick('library'); // browser: opens the file picker (phones offer the camera there too)
     } else {
       Alert.alert('Add a photo', undefined, [
         { text: 'Cancel', style: 'cancel' },

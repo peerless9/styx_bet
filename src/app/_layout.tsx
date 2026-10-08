@@ -1,28 +1,32 @@
-import * as Linking from 'expo-linking';
-import { DefaultTheme, ThemeProvider, Stack, router } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef } from 'react';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as Linking from "expo-linking";
+import { DefaultTheme, ThemeProvider, Stack, router } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useRef } from "react";
+import { Platform, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-import { C } from '@/constants/theme';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { BetsProvider } from '@/context/BetsContext';
-import { betIdFromUrl } from '@/lib/links';
+import { C } from "@/constants/theme";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { BetsProvider } from "@/context/BetsContext";
+import { betIdFromUrl } from "@/lib/links";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-const theme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: C.bg, primary: C.ink } };
+const theme = {
+  ...DefaultTheme,
+  colors: { ...DefaultTheme.colors, background: C.bg, primary: C.ink },
+};
 
 // Every non-tab screen slides up as an iOS sheet (swipe down to dismiss).
-const sheet = { presentation: 'modal' as const, headerShown: false };
+const sheet = { presentation: "modal" as const, headerShown: false };
 
 function RootStack() {
   const { status } = useAuth();
-  const inApp = status === 'signedIn' || status === 'demo';
+  const inApp = status === "signedIn" || status === "demo";
 
   useEffect(() => {
-    if (status !== 'loading') SplashScreen.hideAsync().catch(() => {});
+    if (status !== "loading") SplashScreen.hideAsync().catch(() => {});
   }, [status]);
 
   // Opened a bet link while logged out? Remember it and open the bet after login/sign-up.
@@ -40,15 +44,26 @@ function RootStack() {
     }
   }, [inApp]);
 
-  if (status === 'loading') return null; // splash screen stays up
+  if (status === "loading") return null; // splash screen stays up
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: C.bg },
+      }}
+    >
       {/* Signed out: welcome → sign up / log in */}
       <Stack.Protected guard={!inApp}>
         <Stack.Screen name="welcome" />
-        <Stack.Screen name="sign-up" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="sign-in" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen
+          name="sign-up"
+          options={{ animation: "slide_from_right" }}
+        />
+        <Stack.Screen
+          name="sign-in"
+          options={{ animation: "slide_from_right" }}
+        />
       </Stack.Protected>
 
       {/* Signed in (or demo) */}
@@ -69,15 +84,36 @@ function RootStack() {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={theme}>
-        <AuthProvider>
-          <BetsProvider>
-            <StatusBar style="dark" />
-            <RootStack />
-          </BetsProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </GestureHandlerRootView>
+    // In a desktop browser, show the app at phone width in the middle of the page
+    <View
+      style={
+        Platform.OS === "web"
+          ? { flex: 1, backgroundColor: "#E7E7E7" }
+          : { flex: 1 }
+      }
+    >
+      <GestureHandlerRootView
+        style={Platform.OS === "web" ? webFrame : { flex: 1 }}
+      >
+        <ThemeProvider value={theme}>
+          <AuthProvider>
+            <BetsProvider>
+              <StatusBar style="dark" />
+              <RootStack />
+            </BetsProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </GestureHandlerRootView>
+    </View>
   );
 }
+
+const webFrame = {
+  flex: 1,
+  width: "100%" as const,
+  maxWidth: 480,
+  alignSelf: "center" as const,
+  backgroundColor: C.bg,
+  overflow: "hidden" as const,
+  boxShadow: "0 0 40px rgba(0,0,0,0.12)",
+};

@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, parseISO } from 'date-fns';
 import { router } from 'expo-router';
-import { Alert, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
-import { Avatar, Button, Card, Divider, Pill, Row, Sheet, T, success } from '@/components/ui';
+import { Avatar, Button, Card, Divider, Pill, Row, Sheet, T, confirmAction, success } from '@/components/ui';
 import { C, money } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { formatPhoneInput, US_STATES } from '@/lib/validation';
@@ -23,10 +23,7 @@ export default function Account() {
   const { currentUser, privateProfile: p, isDemo, mockUsersList, switchActiveUser, signOut, firebaseUser } = useAuth();
 
   const confirmSignOut = () =>
-    Alert.alert(isDemo ? 'Leave demo mode?' : 'Log out?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: isDemo ? 'Leave demo' : 'Log out', style: 'destructive', onPress: () => signOut() },
-    ]);
+confirmAction(isDemo ? 'Leave demo mode?' : 'Log out?', undefined, isDemo ? 'Leave demo' : 'Log out', () => signOut(), true);
 
   return (
     <Sheet title="Account" onClose={() => router.back()}>
