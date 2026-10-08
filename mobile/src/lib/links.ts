@@ -1,13 +1,19 @@
 import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
+
+import { PUBLIC_WEB_URL } from '@/lib/firebase';
 
 /**
- * Link that opens the Styx app straight to a bet.
- * - In Expo Go (development) this is an exp://… link that only works while your dev server runs.
- * - In the real app (TestFlight / App Store) it's styx://bet/<id>.
+ * Shareable link to a bet. It's a normal https link to the Styx web app, so it works for
+ * anyone — they can open it in any phone browser, sign up and accept.
+ * (In the browser we use the current site, so links also work when testing locally.)
  */
-export const betLink = (betId: string) => Linking.createURL(`/bet/${betId}`);
+export function betLink(betId: string): string {
+  const origin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : PUBLIC_WEB_URL;
+  return `${origin}/bet/${betId}`;
+}
 
-/** Pulls the bet id out of a Styx link, or null. */
+/** Pulls the bet id out of a Styx link (https://…/bet/<id>, styx://bet/<id> or exp://…/--/bet/<id>), or null. */
 export function betIdFromUrl(url: string | null): string | null {
   if (!url) return null;
   const { path } = Linking.parse(url);

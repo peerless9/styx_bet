@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import React from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -487,3 +488,15 @@ const s = StyleSheet.create({
   },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: R.md, borderWidth: 1 },
 });
+
+/** Yes/no confirmation that works on iPhone (native alert) and in the browser (window.confirm). */
+export function confirmAction(title: string, message: string | undefined, actionLabel: string, onConfirm: () => void, destructive = false) {
+  if (Platform.OS === 'web') {
+    if (window.confirm(message ? `${title}\n\n${message}` : title)) onConfirm();
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: actionLabel, style: destructive ? 'destructive' : 'default', onPress: onConfirm },
+  ]);
+}

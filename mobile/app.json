@@ -24,7 +24,12 @@
     },
     "web": {
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "Styx Bet",
+      "shortName": "Styx",
+      "description": "Bet your friends on anything. Stakes held in escrow, outcomes confirmed by everyone.",
+      "themeColor": "#FFFFFF",
+      "backgroundColor": "#F8FAFC"
     },
     "plugins": [
       "expo-router",
